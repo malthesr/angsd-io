@@ -1,0 +1,18 @@
+[package]
+name = "angsd-io"
+version = "0.1.0"
+authors = ["Malthe Sebro Rasmussen <malthesebro@protonmail.com>"]
+edition = "2021"
+license = "MIT"
+description = "Reading and writing of binary file formats associated with ANGSD"
+homepage = "https://github.com/malthesr/angsd-io"
+repository = "https://github.com/malthesr/angsd-io"
+
+[features]
+default = []
+libdeflate = ["bgzf/libdeflater"]
+
+[dependencies]
+# FIXME: Change to next published noodles-bgzf (for `bgzf::Writer::virtual_position`)
+bgzf = { package = "noodles-bgzf", git = "https://github.com/zaeleus/noodles/", rev = "35aec5a" }
+byteorder = "1.4"
