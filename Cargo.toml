@@ -13,6 +13,5 @@ default = []
 libdeflate = ["bgzf/libdeflater"]
 
 [dependencies]
-# FIXME: Change to next published noodles-bgzf (for `bgzf::Writer::virtual_position`)
-bgzf = { package = "noodles-bgzf", git = "https://github.com/zaeleus/noodles/", rev = "35aec5a" }
+bgzf = { package = "noodles-bgzf", version = "0.10" }
 byteorder = "1.4"
