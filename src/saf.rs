@@ -14,6 +14,12 @@
 #![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/saf_write.rs"))]
 //! ```
 //!
+//! Read only intersecting sites in multiple BGZF SAF files:
+//!
+//! ```no_run
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/saf_intersect.rs"))]
+//! ```
+//!
 //! The above examples are also available as runnable binaries,
 //! see the repository `examples/` folder.
 
