@@ -1,4 +1,4 @@
-//! Read intersecting sites in two BGZF SAF file and contig and position.
+//! Read intersecting sites in two BGZF SAF files and print readable sites.
 
 use std::{
     env,
@@ -8,31 +8,32 @@ use std::{
 use angsd_io::saf;
 
 fn main() -> io::Result<()> {
-    let mut args = env::args().skip(1);
-    let left_path = args.next().expect("missing path to first SAF member file");
-    let right_path = args.next().expect("missing path to second SAF member file");
+    let readers = env::args()
+        .skip(1)
+        .map(|p| saf::BgzfReader::from_bgzf_member_path(p))
+        .collect::<io::Result<Vec<_>>>()?;
 
-    let left_reader = saf::BgzfReader::from_bgzf_member_path(left_path)?;
-    let right_reader = saf::BgzfReader::from_bgzf_member_path(right_path)?;
-    let mut reader = left_reader.intersect(right_reader);
+    // Note also the [`BgzfReader::intersect`] and [`Intersect::intersect`] methods to construct
+    // intersecting reader when the number of readers are statically known.
+    let mut intersect =
+        saf::reader::Intersect::new(readers).expect("at least two SAF member file paths required");
 
     let stdout = io::stdout();
     let mut writer = stdout.lock();
 
-    let mut bufs = reader.create_record_bufs();
-    while reader.read_records(&mut bufs)?.is_not_done() {
-        let left_id = *bufs[0].contig_id();
-        let left_contig = reader.get_readers()[0].index().records()[left_id].name();
-        let left_pos = bufs[0].position();
+    let mut bufs = intersect.create_record_bufs();
+    while intersect.read_records(&mut bufs)?.is_not_done() {
+        for (reader, buf) in intersect.get_readers().iter().zip(bufs.iter()) {
+            let contig = reader.index().records()[*buf.contig_id()].name();
+            let position = buf.position();
+            write!(writer, "{contig}\t{position}")?;
 
-        let right_id = *bufs[1].contig_id();
-        let right_contig = reader.get_readers()[1].index().records()[right_id].name();
-        let right_pos = bufs[1].position();
+            for value in buf.values() {
+                write!(writer, "\t{value:.2}")?;
+            }
 
-        assert_eq!(left_contig, right_contig);
-        assert_eq!(left_pos, right_pos);
-
-        writeln!(writer, "{left_contig}:{left_pos}")?;
+            writeln!(writer)?;
+        }
     }
 
     Ok(())
