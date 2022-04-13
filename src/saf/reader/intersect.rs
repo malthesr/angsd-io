@@ -1,202 +1,255 @@
-use std::{cmp::Ordering, collections::HashMap, io};
+use std::{cmp::Ordering, io};
 
-use crate::{saf::IdRecord, ReadStatus};
+use indexmap::IndexMap;
 
-use super::BgzfReader;
+use crate::ReadStatus;
 
-/// An intersection of BGZF SAF files readers.
+use super::{BgzfReader, IdRecord, Index};
+
+/// An intersection of BGZF SAF file readers.
+///
+/// Created by the [`BgzfReader::intersect`] method.
 pub struct Intersect<R> {
-    left: BgzfReader<R>,
-    right: BgzfReader<R>,
-    left_to_right: Vec<Option<usize>>,
+    readers: Vec<BgzfReader<R>>,
+    contigs: Contigs,
+    ids: Vec<usize>,
 }
 
 impl<R> Intersect<R>
 where
     R: io::BufRead + io::Seek,
 {
-    /// Returns a new record pair suitable for use in reading.
+    /// Returns a new collection of records suitable for use in reading.
     ///
-    /// The [`Self::read_record_pair`] method requires a pair of record buffer with the correct
-    /// number of alleles. This method creates such a record pair, using the number of alleles
-    /// defined in the index.
-    pub fn create_record_buf(&self) -> (IdRecord, IdRecord) {
-        (
-            self.left.create_record_buf(),
-            self.right.create_record_buf(),
-        )
+    /// The [`Self::read_records`] method requires a collection of record buffers of the correct
+    /// length and with the correct number of alleles. This method creates such a record collection,
+    /// using the number of alleles defined in the indexes.
+    pub fn create_record_bufs(&self) -> Vec<IdRecord> {
+        self.readers
+            .iter()
+            .map(|reader| reader.create_record_buf())
+            .collect()
     }
 
-    /// Returns the left inner reader.
-    pub fn get_left(&self) -> &BgzfReader<R> {
-        &self.left
+    /// Creates a new intersecting reader with an additional reader, consuming `self`.
+    ///
+    /// Since `self` is consumed, rather than mutated, this can be chained to build intersections
+    /// of multiple readers. See also the [`BgzfReader::intersect`] method for a way to start create
+    /// the initial intersecting reader.
+    pub fn intersect(mut self, reader: BgzfReader<R>) -> Self {
+        self.contigs.add_index(reader.index());
+        self.readers.push(reader);
+        self.ids.push(0);
+        self
     }
 
-    /// Returns a mutable reference to the left inner reader.
-    pub fn get_left_mut(&self) -> &BgzfReader<R> {
-        &self.left
+    /// Returns the inner readers.
+    pub fn get_readers(&self) -> &[BgzfReader<R>] {
+        &self.readers
     }
 
-    /// Returns the right inner reader.
-    pub fn get_right(&self) -> &BgzfReader<R> {
-        &self.right
-    }
-
-    /// Returns a mutable reference to the right inner reader.
-    pub fn get_right_mut(&self) -> &BgzfReader<R> {
-        &self.right
+    /// Returns a mutable reference to the inner readers.
+    pub fn get_readers_mut(&mut self) -> &mut [BgzfReader<R>] {
+        &mut self.readers
     }
 
     /// Returns the inner readers, consuming `self`.
-    pub fn into_parts(self) -> (BgzfReader<R>, BgzfReader<R>) {
-        (self.left, self.right)
+    pub fn into_readers(self) -> Vec<BgzfReader<R>> {
+        self.readers
     }
 
-    /// Creates a new intersection.
-    pub fn new(left: BgzfReader<R>, right: BgzfReader<R>) -> Self {
-        let right_name_to_id: HashMap<&str, usize> = right
-            .index()
-            .records()
-            .iter()
-            .enumerate()
-            .map(|(i, rec)| (rec.name(), i))
-            .collect();
-
-        let left_to_right = left
-            .index()
-            .records()
-            .iter()
-            .map(|rec| right_name_to_id.get(rec.name()).copied())
-            .collect();
-
-        Self {
-            left,
-            right,
-            left_to_right,
-        }
-    }
-
-    /// Reads a single pair of intersecting records.
+    /// Reads a set of intersecting records, one from each contained reader.
     ///
-    /// If successful, a record from the left reader will be read into the left record, and a
-    /// record from the right reader will be read into the right record.
+    /// If successful, a record from each inner reader will be read into the corresponding buffer
+    /// such that all resulting records will be on the same contig and the same position.
     ///
-    /// Note that `left` and `right` must have a number of values defined in accordance with the
-    /// number of values in the corresponding SAF values files. See [`Self::create_record_buf`]
-    ///  to create such records based on the provided indexes.
-    pub fn read_record_pair(
-        &mut self,
-        left: &mut IdRecord,
-        right: &mut IdRecord,
-    ) -> io::Result<ReadStatus> {
-        if self.left.read_record(left)?.is_done()
-            || self.right.read_record(right)?.is_done()
-            || self.read_until_shared_contig(left, right)?.is_done()
+    /// Note that the number of provided buffers and their contents must match the inner readers
+    /// and their contents, respectively. See [`Self::create_record_bufs`] to create an appropriate
+    /// collection of buffers based on the reader indices.
+    pub fn read_records(&mut self, bufs: &mut [IdRecord]) -> io::Result<ReadStatus> {
+        for ((reader, record), id) in self
+            .readers
+            .iter_mut()
+            .zip(bufs.iter_mut())
+            .zip(self.ids.iter_mut())
         {
+            if reader.read_record(record)?.is_done() {
+                return Ok(ReadStatus::Done);
+            }
+
+            *id = *record.contig_id();
+        }
+
+        if self.read_until_shared_contig(bufs)?.is_done() {
             return Ok(ReadStatus::Done);
         }
 
-        match self.read_until_shared_position_on_contig(left, right)? {
+        match self.read_until_shared_position_on_contig(bufs)? {
             Some(ReadStatus::Done) => Ok(ReadStatus::Done),
             Some(ReadStatus::NotDone) => Ok(ReadStatus::NotDone),
-            None => self.read_record_pair(left, right),
+            None => self.read_records(bufs),
         }
     }
 
-    /// Reads records from the inner readers until they reach a shared contig.
-    ///
-    /// If `left` and `right` are already on the same contig, no further records are read.
-    fn read_until_shared_contig(
-        &mut self,
-        left: &mut IdRecord,
-        right: &mut IdRecord,
-    ) -> io::Result<ReadStatus> {
-        let mut left_id = *left.contig_id();
+    pub(crate) fn from_reader(reader: BgzfReader<R>) -> Self {
+        let contigs = Contigs::from(reader.index());
 
-        loop {
-            // Get the ID on the right that corresponds to the ID on the left;
-            // this will be `None` if the left contig does not exist on the right.
-            let corresponding_right_id = self.left_to_right[left_id];
+        Self::new(vec![reader], contigs)
+    }
 
-            // Now we consider four cases:
-            //
-            // (1) The current left contig exists on the right, and...
-            //     (1a) The current right contig is the same:
-            //          we found an intersection, but not necessarily the last, so return `NotDone`
-            //     (1b) The current right contig is not the same:
-            //          seek the right reader to the left contig, read a right record, and continue
-            // (2) The current left contig does not exist on the right, and...
-            //     (2a) A later left contig does exist on the right:
-            //          seek the left reader to this later contig, read a left record, and continue
-            //     (2b) No later left contig exists on the right:
-            //          no more intersecting records exist, return `Done`.
-            if let Some(right_id) = corresponding_right_id {
-                if right.contig_id() == &right_id {
-                    // (1a)
-                    return Ok(ReadStatus::NotDone);
-                } else {
-                    // (1b)
-                    self.right.seek(right_id)?;
-                    self.right.read_record(right)?;
+    fn new(readers: Vec<BgzfReader<R>>, contigs: Contigs) -> Self {
+        let ids = vec![0; readers.len()];
+
+        Self {
+            readers,
+            contigs,
+            ids,
+        }
+    }
+
+    fn read_until_shared_contig(&mut self, bufs: &mut [IdRecord]) -> io::Result<ReadStatus> {
+        let mut next_idx = 0;
+        for (reader, buf) in self.readers.iter_mut().zip(bufs.iter_mut()) {
+            match self.contigs.next_shared(*buf.contig_id(), reader.index()) {
+                Some(idx) => {
+                    if idx > next_idx {
+                        next_idx = idx;
+                    }
                 }
-            } else if let Some(next_left_id) = self.left_to_right[left_id..]
-                .iter()
-                .position(|right_id| right_id.is_some())
-            {
-                // (2a)
-                self.left.seek(next_left_id)?;
-                self.left.read_record(left)?;
-                left_id = *left.contig_id();
-            } else {
-                // (2b)
-                return Ok(ReadStatus::Done);
+                None => return Ok(ReadStatus::Done),
             }
         }
+
+        let next_ids = &self.contigs[next_idx];
+        for (((reader, buf), next_id), id) in self
+            .readers
+            .iter_mut()
+            .zip(bufs.iter_mut())
+            .zip(next_ids.iter())
+            .zip(self.ids.iter_mut())
+        {
+            if buf.contig_id() != next_id {
+                reader.seek(*next_id)?;
+                reader.read_record(buf)?;
+                *id = *next_id;
+            }
+        }
+
+        Ok(ReadStatus::NotDone)
     }
 
-    /// Reads records from the inner reads until they reach a shared position, so long as they
-    /// remain on the current contigs.
-    ///
-    /// If no more shared positions exist on contigs, returns `Some`.
-    ///
-    /// If `left` and `right` are already on the same position, no further records are read.
     fn read_until_shared_position_on_contig(
         &mut self,
-        left: &mut IdRecord,
-        right: &mut IdRecord,
+        bufs: &mut [IdRecord],
     ) -> io::Result<Option<ReadStatus>> {
-        let left_id = *left.contig_id();
-        let right_id = *right.contig_id();
+        let mut max_pos = bufs
+            .iter()
+            .map(IdRecord::position)
+            .max()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "empty buffer slice"))?;
 
-        let mut left_pos = left.position();
-        let mut right_pos = right.position();
+        'outer: loop {
+            for ((reader, record), id) in self
+                .readers
+                .iter_mut()
+                .zip(bufs.iter_mut())
+                .zip(self.ids.iter_mut())
+            {
+                let mut pos = record.position();
 
-        loop {
-            match left_pos.cmp(&right_pos) {
-                Ordering::Less => {
-                    if self.left.read_record(left)?.is_done() {
-                        return Ok(Some(ReadStatus::Done));
+                match pos.cmp(&max_pos) {
+                    Ordering::Less => {
+                        while pos < max_pos {
+                            if reader.read_record(record)?.is_done() {
+                                return Ok(Some(ReadStatus::Done));
+                            }
+
+                            if record.contig_id() != id {
+                                *id = *record.contig_id();
+
+                                return Ok(None);
+                            }
+
+                            pos = record.position();
+                        }
+
+                        continue 'outer;
                     }
-
-                    left_pos = left.position();
-
-                    if left.contig_id() != &left_id {
-                        return Ok(None);
-                    }
-                }
-                Ordering::Equal => return Ok(Some(ReadStatus::NotDone)),
-                Ordering::Greater => {
-                    if self.right.read_record(right)?.is_done() {
-                        return Ok(Some(ReadStatus::Done));
-                    }
-
-                    right_pos = right.position();
-
-                    if right.contig_id() != &right_id {
-                        return Ok(None);
+                    Ordering::Equal => (),
+                    Ordering::Greater => {
+                        max_pos = pos;
+                        continue 'outer;
                     }
                 }
             }
+
+            return Ok(Some(ReadStatus::NotDone));
         }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct Contigs {
+    contigs: IndexMap<String, Vec<usize>>,
+}
+
+impl Contigs {
+    fn add_index(&mut self, index: &Index) {
+        let map: IndexMap<&str, usize> = index
+            .records()
+            .iter()
+            .enumerate()
+            .map(|(i, record)| (record.name(), i))
+            .collect();
+
+        self.contigs.retain(|name, ids| {
+            if let Some(new_id) = map.get(name.as_str()) {
+                ids.push(*new_id);
+                true
+            } else {
+                false
+            }
+        })
+    }
+
+    fn next_shared(&self, id: usize, index: &Index) -> Option<usize> {
+        let name = index.records()[id].name();
+
+        self.contigs.get_index_of(name).or_else(|| {
+            index.records()[(id + 1)..]
+                .iter()
+                .find_map(|record| self.contigs.get_index_of(record.name()))
+        })
+    }
+}
+
+impl From<&Index> for Contigs {
+    fn from(index: &Index) -> Self {
+        index
+            .records()
+            .iter()
+            .enumerate()
+            .map(|(i, record)| (record.name().to_owned(), vec![i]))
+            .collect()
+    }
+}
+
+impl FromIterator<(String, Vec<usize>)> for Contigs {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = (String, Vec<usize>)>,
+    {
+        let contigs = iter.into_iter().map(|(s, a)| (s, a)).collect();
+
+        Self { contigs }
+    }
+}
+
+impl std::ops::Index<usize> for Contigs {
+    type Output = [usize];
+
+    #[inline]
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.contigs[index]
     }
 }

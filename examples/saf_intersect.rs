@@ -14,23 +14,20 @@ fn main() -> io::Result<()> {
 
     let left_reader = saf::BgzfReader::from_bgzf_member_path(left_path)?;
     let right_reader = saf::BgzfReader::from_bgzf_member_path(right_path)?;
-    let mut reader = saf::reader::Intersect::new(left_reader, right_reader);
+    let mut reader = left_reader.intersect(right_reader);
 
     let stdout = io::stdout();
     let mut writer = stdout.lock();
 
-    let (mut left_buf, mut right_buf) = reader.create_record_buf();
-    while reader
-        .read_record_pair(&mut left_buf, &mut right_buf)?
-        .is_not_done()
-    {
-        let left_id = *left_buf.contig_id();
-        let left_contig = reader.get_left().index().records()[left_id].name();
-        let left_pos = left_buf.position();
+    let mut bufs = reader.create_record_bufs();
+    while reader.read_records(&mut bufs)?.is_not_done() {
+        let left_id = *bufs[0].contig_id();
+        let left_contig = reader.get_readers()[0].index().records()[left_id].name();
+        let left_pos = bufs[0].position();
 
-        let right_id = *right_buf.contig_id();
-        let right_contig = reader.get_right().index().records()[right_id].name();
-        let right_pos = right_buf.position();
+        let right_id = *bufs[1].contig_id();
+        let right_contig = reader.get_readers()[1].index().records()[right_id].name();
+        let right_pos = bufs[1].position();
 
         assert_eq!(left_contig, right_contig);
         assert_eq!(left_pos, right_pos);

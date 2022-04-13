@@ -252,19 +252,42 @@ mod tests {
         Ok(())
     }
 
+    fn test_intersect<R>(mut intersect: Intersect<R>, shared: &[(&str, u32)]) -> io::Result<()>
+    where
+        R: io::BufRead + io::Seek,
+    {
+        let mut bufs = intersect.create_record_bufs();
+
+        for (expected_contig, expected_pos) in shared.iter() {
+            intersect.read_records(&mut bufs)?;
+
+            for (i, buf) in bufs.iter().enumerate() {
+                let id = *buf.contig_id();
+                let contig = intersect.get_readers()[i].index().records()[id].name();
+                assert_eq!(contig, *expected_contig);
+
+                let pos = buf.position();
+                assert_eq!(pos, *expected_pos);
+            }
+        }
+
+        assert!(intersect.read_records(&mut bufs)?.is_done());
+
+        Ok(())
+    }
+
     #[test]
-    fn test_intersect() -> io::Result<()> {
-        let left_records = records![
+    fn test_intersect_two() -> io::Result<()> {
+        let left_reader = reader!(records![
             "chr2":4 => [0.],
             "chr2":7 => [0.],
             "chr5":1 => [0.],
             "chr5":2 => [0.],
             "chr7":9 => [0.],
             "chr8":1 => [0.],
-        ];
-        let left_reader = reader!(left_records);
+        ]);
 
-        let right_records = records![
+        let right_reader = reader!(records![
             "chr1":1 => [0.],
             "chr2":7 => [0.],
             "chr4":2 => [0.],
@@ -273,48 +296,56 @@ mod tests {
             "chr7":9 => [0.],
             "chr8":2 => [0.],
             "chr9":1 => [0.],
-        ];
-        let right_reader = reader!(right_records);
+        ]);
 
-        let mut intersect = Intersect::new(left_reader, right_reader);
-        let (mut left, mut right) = intersect.create_record_buf();
+        let intersect = left_reader.intersect(right_reader);
+        let shared = vec![("chr2", 7), ("chr5", 1), ("chr7", 9)];
 
-        let shared = vec![("chr2", 7u32), ("chr5", 1), ("chr7", 9)];
-
-        for (contig, pos) in shared.into_iter() {
-            println!("{contig}:{pos}");
-            intersect.read_record_pair(&mut left, &mut right)?;
-
-            let left_contig = intersect.get_left().index().records()[*left.contig_id()].name();
-            assert_eq!(left_contig, contig);
-            assert_eq!(left.position(), pos);
-
-            let right_contig = intersect.get_right().index().records()[*right.contig_id()].name();
-            assert_eq!(right_contig, contig);
-            assert_eq!(right.position(), pos);
-        }
-
-        assert!(intersect.read_record_pair(&mut left, &mut right)?.is_done());
-
-        Ok(())
+        test_intersect(intersect, &shared)
     }
 
     #[test]
     fn test_intersect_finishes_with_shared_end() -> io::Result<()> {
         let left_reader = reader!(records!("chr1":2 => [0.]));
         let right_reader = reader!(records!("chr1":2 => [0.]));
-        let mut intersect = Intersect::new(left_reader, right_reader);
 
-        let (mut left, mut right) = intersect.create_record_buf();
-        intersect.read_record_pair(&mut left, &mut right)?;
+        let intersect = left_reader.intersect(right_reader);
+        let shared = vec![("chr1", 2)];
 
-        assert_eq!(*left.contig_id(), 0);
-        assert_eq!(left.position(), 2);
-        assert_eq!(*right.contig_id(), 0);
-        assert_eq!(right.position(), 2);
+        test_intersect(intersect, &shared)
+    }
 
-        assert!(intersect.read_record_pair(&mut left, &mut right)?.is_done());
+    #[test]
+    fn test_intersect_three() -> io::Result<()> {
+        let fst_reader = reader!(records![
+            "chr2":4 => [0.],
+            "chr2":7 => [0.],
+            "chr5":1 => [0.],
+            "chr5":2 => [0.],
+            "chr7":9 => [0.],
+            "chr8":1 => [0.],
+        ]);
 
-        Ok(())
+        let snd_reader = reader!(records![
+            "chr2":4 => [0.],
+            "chr2":7 => [0.],
+            "chr7":9 => [0.],
+            "chr8":1 => [0.],
+            "chr9":1 => [0.],
+        ]);
+
+        let thd_reader = reader!(records![
+            "chr2":4 => [0.],
+            "chr2":8 => [0.],
+            "chr5":1 => [0.],
+            "chr5":2 => [0.],
+            "chr7":9 => [0.],
+            "chr8":1 => [0.],
+        ]);
+
+        let intersect = fst_reader.intersect(snd_reader).intersect(thd_reader);
+        let shared = vec![("chr2", 4u32), ("chr7", 9), ("chr8", 1)];
+
+        test_intersect(intersect, &shared)
     }
 }

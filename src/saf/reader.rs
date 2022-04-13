@@ -161,6 +161,15 @@ impl<R> BgzfReader<R>
 where
     R: io::BufRead + io::Seek,
 {
+    /// Creates an intersection of two readers.
+    ///
+    /// The resulting intersecting readers will read only records that lie on the same contigs
+    /// and the same positions. Further readers can be added to the resulting intersecting reader
+    /// by chaining the [`Intersect::intersect`] method.
+    pub fn intersect(self, other: Self) -> Intersect<R> {
+        Intersect::from_reader(self).intersect(other)
+    }
+
     /// Seeks to start of contig.
     ///
     /// The `contig_id` refers to the position of records in the index.
