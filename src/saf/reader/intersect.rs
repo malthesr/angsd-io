@@ -58,6 +58,31 @@ where
         self.readers
     }
 
+    /// Creates a new intersecting reader from a collection of readers.
+    ///
+    /// # Returns
+    ///
+    /// Returns `None` if `readers` contains less than two readers.
+    pub fn new(readers: Vec<BgzfReader<R>>) -> Option<Self> {
+        match readers.as_slice() {
+            [] | [_] => None,
+            [fst, tl @ ..] => {
+                let mut contigs = Contigs::from(fst.index());
+                for reader in tl.iter() {
+                    contigs.add_index(reader.index());
+                }
+
+                let ids = vec![0; readers.len()];
+
+                Some(Self {
+                    readers,
+                    contigs,
+                    ids,
+                })
+            }
+        }
+    }
+
     /// Reads a set of intersecting records, one from each contained reader.
     ///
     /// If successful, a record from each inner reader will be read into the corresponding buffer
@@ -92,18 +117,10 @@ where
     }
 
     pub(crate) fn from_reader(reader: BgzfReader<R>) -> Self {
-        let contigs = Contigs::from(reader.index());
-
-        Self::new(vec![reader], contigs)
-    }
-
-    fn new(readers: Vec<BgzfReader<R>>, contigs: Contigs) -> Self {
-        let ids = vec![0; readers.len()];
-
         Self {
-            readers,
-            contigs,
-            ids,
+            contigs: Contigs::from(reader.index()),
+            readers: vec![reader],
+            ids: vec![0],
         }
     }
 
