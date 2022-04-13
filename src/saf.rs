@@ -110,67 +110,74 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub(self) mod tests {
     use super::*;
 
     use std::io::Seek;
 
     use crate::saf::{
-        reader::{BgzfPositionReader, BgzfValueReader, Intersect},
+        reader::{BgzfPositionReader, BgzfValueReader},
         writer::{BgzfPositionWriter, BgzfValueWriter},
     };
 
-    type MockInner = io::Cursor<Vec<u8>>;
-    type MockReader = BgzfReader<MockInner>;
-    type MockWriter = BgzfWriter<MockInner, MockInner>;
+    pub type MockBgzfReader = BgzfReader<io::Cursor<Vec<u8>>>;
+    pub type MockBgzfWriter = BgzfWriter<io::Cursor<Vec<u8>>, io::Cursor<Vec<u8>>>;
 
-    fn mock_writer(records: &[Record<&str>]) -> io::Result<MockWriter> {
-        let mut index_writer = index::Writer::new(io::Cursor::new(Vec::new()));
-        index_writer.write_magic()?;
+    impl MockBgzfWriter {
+        pub fn create() -> Self {
+            let mut index_writer = index::Writer::new(io::Cursor::new(Vec::new()));
+            index_writer.write_magic().unwrap();
 
-        let mut position_writer = BgzfPositionWriter::from_bgzf(io::Cursor::new(Vec::new()));
-        position_writer.write_magic()?;
+            let mut position_writer = BgzfPositionWriter::from_bgzf(io::Cursor::new(Vec::new()));
+            position_writer.write_magic().unwrap();
 
-        let mut value_writer = BgzfValueWriter::from_bgzf(io::Cursor::new(Vec::new()));
-        value_writer.write_magic()?;
+            let mut value_writer = BgzfValueWriter::from_bgzf(io::Cursor::new(Vec::new()));
+            value_writer.write_magic().unwrap();
 
-        let mut writer = MockWriter::new(index_writer, position_writer, value_writer);
-
-        for record in records.iter() {
-            writer.write_record(record)?;
+            Self::new(index_writer, position_writer, value_writer)
         }
-
-        Ok(writer)
     }
 
-    fn mock_reader(writer: MockWriter) -> io::Result<Option<MockReader>> {
-        let (mut index_cursor, mut position_cursor, mut value_cursor) = writer.finish()?;
+    impl From<MockBgzfWriter> for MockBgzfReader {
+        fn from(writer: MockBgzfWriter) -> Self {
+            let (mut index_cursor, mut position_cursor, mut value_cursor) =
+                writer.finish().unwrap();
 
-        index_cursor.seek(io::SeekFrom::Start(0))?;
-        position_cursor.seek(io::SeekFrom::Start(0))?;
-        value_cursor.seek(io::SeekFrom::Start(0))?;
+            index_cursor.seek(io::SeekFrom::Start(0)).unwrap();
+            position_cursor.seek(io::SeekFrom::Start(0)).unwrap();
+            value_cursor.seek(io::SeekFrom::Start(0)).unwrap();
 
-        let mut index_reader = index::Reader::new(index_cursor);
-        let index = index_reader.read_index()?;
+            let mut index_reader = index::Reader::new(index_cursor);
+            let index = index_reader.read_index().unwrap();
 
-        let position_reader = BgzfPositionReader::from_bgzf(position_cursor);
-        let value_reader = BgzfValueReader::from_bgzf(value_cursor);
+            let mut position_reader = BgzfPositionReader::from_bgzf(position_cursor);
+            position_reader.read_magic().unwrap();
 
-        match MockReader::new(index, position_reader, value_reader) {
-            Some(mut reader) => {
-                reader.read_magic()?;
+            let mut value_reader = BgzfValueReader::from_bgzf(value_cursor);
+            value_reader.read_magic().unwrap();
 
-                Ok(Some(reader))
+            Self::new(index, position_reader, value_reader).unwrap()
+        }
+    }
+
+    macro_rules! reader {
+        ($records:expr) => {{
+            let mut writer = MockBgzfWriter::create();
+
+            for record in $records.iter() {
+                writer.write_record(record).unwrap();
             }
-            None => Ok(None),
-        }
+
+            MockBgzfReader::from(writer)
+        }};
     }
+    pub(super) use reader;
 
     macro_rules! records {
         ($($contig:literal : $pos:literal => [$($v:literal),+ $(,)?]),+ $(,)?) => {
             vec![
                 $(
-                    Record::new(
+                    crate::saf::Record::new(
                         $contig,
                         $pos,
                         Box::new([$($v),+]),
@@ -178,47 +185,51 @@ mod tests {
                 )+
             ]
         };
-        (default) => {
-            records!(
-                "chr1":1 => [0., -1., -2., -3., -4.],
-                "chr1":2 => [1., -2., -3., -4., -5.],
-                "chr2":1 => [2., -3., -4., -5., -6.],
-                "chr2":2 => [3., -4., -5., -6., -7.],
-                "chr2":3 => [4., -5., -6., -7., -8.],
-                "chr3":1 => [5., -6., -7., -8., -9.],
-            )
-        }
-    }
-
-    macro_rules! reader {
-        ($records:expr) => {
-            mock_reader(mock_writer($records.as_slice())?)?.unwrap()
+        ($($contig:literal : $pos:literal),+ $(,)?) => {
+            vec![
+                $(
+                    crate::saf::Record::new(
+                        $contig,
+                        $pos,
+                        Box::new([0.]),
+                    ),
+                )+
+            ]
         };
     }
+    pub(super) use records;
 
     #[test]
     fn test_write_read_index() -> io::Result<()> {
-        let reader = reader!(records!(default));
+        let records = records!["chr1":1, "chr1":2, "chr2":1, "chr2":2, "chr2":3, "chr3":1];
+        let reader = reader!(records);
 
-        let records = reader.index().records();
+        let index_records = reader.index().records();
 
-        assert_eq!(records.len(), 3);
+        assert_eq!(index_records.len(), 3);
 
-        assert_eq!(records[0].name(), "chr1");
-        assert_eq!(records[0].sites(), 2);
+        assert_eq!(index_records[0].name(), "chr1");
+        assert_eq!(index_records[0].sites(), 2);
 
-        assert_eq!(records[1].name(), "chr2");
-        assert_eq!(records[1].sites(), 3);
+        assert_eq!(index_records[1].name(), "chr2");
+        assert_eq!(index_records[1].sites(), 3);
 
-        assert_eq!(records[2].name(), "chr3");
-        assert_eq!(records[2].sites(), 1);
+        assert_eq!(index_records[2].name(), "chr3");
+        assert_eq!(index_records[2].sites(), 1);
 
         Ok(())
     }
 
     #[test]
     fn test_write_read_records() -> io::Result<()> {
-        let records = records!(default);
+        let records = records![
+            "chr1":1 => [0., -1., -2., -3., -4.],
+            "chr1":2 => [1., -2., -3., -4., -5.],
+            "chr2":1 => [2., -3., -4., -5., -6.],
+            "chr2":2 => [3., -4., -5., -6., -7.],
+            "chr2":3 => [4., -5., -6., -7., -8.],
+            "chr3":1 => [5., -6., -7., -8., -9.],
+        ];
         let mut reader = reader!(records);
 
         let mut i = 0;
@@ -236,7 +247,8 @@ mod tests {
 
     #[test]
     fn test_seek() -> io::Result<()> {
-        let mut reader = reader!(records!(default));
+        let records = records!["chr1":1, "chr1":2, "chr2":1, "chr2":2, "chr2":3, "chr3":1];
+        let mut reader = reader!(records);
 
         let mut record = reader.create_record_buf();
 
@@ -250,102 +262,5 @@ mod tests {
         }
 
         Ok(())
-    }
-
-    fn test_intersect<R>(mut intersect: Intersect<R>, shared: &[(&str, u32)]) -> io::Result<()>
-    where
-        R: io::BufRead + io::Seek,
-    {
-        let mut bufs = intersect.create_record_bufs();
-
-        for (expected_contig, expected_pos) in shared.iter() {
-            intersect.read_records(&mut bufs)?;
-
-            for (i, buf) in bufs.iter().enumerate() {
-                let id = *buf.contig_id();
-                let contig = intersect.get_readers()[i].index().records()[id].name();
-                assert_eq!(contig, *expected_contig);
-
-                let pos = buf.position();
-                assert_eq!(pos, *expected_pos);
-            }
-        }
-
-        assert!(intersect.read_records(&mut bufs)?.is_done());
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_intersect_two() -> io::Result<()> {
-        let left_reader = reader!(records![
-            "chr2":4 => [0.],
-            "chr2":7 => [0.],
-            "chr5":1 => [0.],
-            "chr5":2 => [0.],
-            "chr7":9 => [0.],
-            "chr8":1 => [0.],
-        ]);
-
-        let right_reader = reader!(records![
-            "chr1":1 => [0.],
-            "chr2":7 => [0.],
-            "chr4":2 => [0.],
-            "chr4":3 => [0.],
-            "chr5":1 => [0.],
-            "chr7":9 => [0.],
-            "chr8":2 => [0.],
-            "chr9":1 => [0.],
-        ]);
-
-        let intersect = left_reader.intersect(right_reader);
-        let shared = vec![("chr2", 7), ("chr5", 1), ("chr7", 9)];
-
-        test_intersect(intersect, &shared)
-    }
-
-    #[test]
-    fn test_intersect_finishes_with_shared_end() -> io::Result<()> {
-        let left_reader = reader!(records!("chr1":2 => [0.]));
-        let right_reader = reader!(records!("chr1":2 => [0.]));
-
-        let intersect = left_reader.intersect(right_reader);
-        let shared = vec![("chr1", 2)];
-
-        test_intersect(intersect, &shared)
-    }
-
-    #[test]
-    fn test_intersect_three() -> io::Result<()> {
-        let fst_reader = reader!(records![
-            "chr2":4 => [0.],
-            "chr2":7 => [0.],
-            "chr5":1 => [0.],
-            "chr5":2 => [0.],
-            "chr7":9 => [0.],
-            "chr8":1 => [0.],
-        ]);
-
-        let snd_reader = reader!(records![
-            "chr2":4 => [0.],
-            "chr2":7 => [0.],
-            "chr7":9 => [0.],
-            "chr8":1 => [0.],
-            "chr9":1 => [0.],
-        ]);
-
-        let thd_reader = reader!(records![
-            "chr2":4 => [0.],
-            "chr2":8 => [0.],
-            "chr5":1 => [0.],
-            "chr5":2 => [0.],
-            "chr7":9 => [0.],
-            "chr8":1 => [0.],
-        ]);
-
-        let intersect = fst_reader.intersect(snd_reader).intersect(thd_reader);
-        let shared = vec![("chr2", 4u32), ("chr7", 9), ("chr8", 1)];
-
-        test_intersect(intersect, &shared)
     }
 }
