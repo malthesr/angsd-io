@@ -166,20 +166,39 @@ mod tests {
         }
     }
 
-    fn mock_records() -> Vec<Record<&'static str>> {
-        vec![
-            Record::new("chr1", 1, Box::new([0., -1., -2., -3., -4.])),
-            Record::new("chr1", 2, Box::new([1., -2., -3., -4., -5.])),
-            Record::new("chr2", 1, Box::new([2., -3., -4., -5., -6.])),
-            Record::new("chr2", 2, Box::new([3., -4., -5., -6., -7.])),
-            Record::new("chr2", 3, Box::new([4., -5., -6., -7., -8.])),
-            Record::new("chr3", 1, Box::new([5., -6., -7., -8., -9.])),
-        ]
+    macro_rules! records {
+        ($($contig:literal : $pos:literal => [$($v:literal),+ $(,)?]),+ $(,)?) => {
+            vec![
+                $(
+                    Record::new(
+                        $contig,
+                        $pos,
+                        Box::new([$($v),+]),
+                    ),
+                )+
+            ]
+        };
+        (default) => {
+            records!(
+                "chr1":1 => [0., -1., -2., -3., -4.],
+                "chr1":2 => [1., -2., -3., -4., -5.],
+                "chr2":1 => [2., -3., -4., -5., -6.],
+                "chr2":2 => [3., -4., -5., -6., -7.],
+                "chr2":3 => [4., -5., -6., -7., -8.],
+                "chr3":1 => [5., -6., -7., -8., -9.],
+            )
+        }
+    }
+
+    macro_rules! reader {
+        ($records:expr) => {
+            mock_reader(mock_writer($records.as_slice())?)?.unwrap()
+        };
     }
 
     #[test]
     fn test_write_read_index() -> io::Result<()> {
-        let reader = mock_reader(mock_writer(&mock_records())?)?.unwrap();
+        let reader = reader!(records!(default));
 
         let records = reader.index().records();
 
@@ -199,8 +218,8 @@ mod tests {
 
     #[test]
     fn test_write_read_records() -> io::Result<()> {
-        let records = mock_records();
-        let mut reader = mock_reader(mock_writer(&records)?)?.unwrap();
+        let records = records!(default);
+        let mut reader = reader!(records);
 
         let mut i = 0;
         let mut record = reader.create_record_buf();
@@ -217,7 +236,7 @@ mod tests {
 
     #[test]
     fn test_seek() -> io::Result<()> {
-        let mut reader = mock_reader(mock_writer(&mock_records())?)?.unwrap();
+        let mut reader = reader!(records!(default));
 
         let mut record = reader.create_record_buf();
 
@@ -235,27 +254,27 @@ mod tests {
 
     #[test]
     fn test_intersect() -> io::Result<()> {
-        let left_records = vec![
-            Record::new("chr2", 4, Box::new([0.])),
-            Record::new("chr2", 7, Box::new([0.])),
-            Record::new("chr5", 1, Box::new([0.])),
-            Record::new("chr5", 2, Box::new([0.])),
-            Record::new("chr7", 9, Box::new([0.])),
-            Record::new("chr8", 1, Box::new([0.])),
+        let left_records = records![
+            "chr2":4 => [0.],
+            "chr2":7 => [0.],
+            "chr5":1 => [0.],
+            "chr5":2 => [0.],
+            "chr7":9 => [0.],
+            "chr8":1 => [0.],
         ];
-        let left_reader = mock_reader(mock_writer(&left_records)?)?.unwrap();
+        let left_reader = reader!(left_records);
 
-        let right_records = vec![
-            Record::new("chr1", 1, Box::new([0.])),
-            Record::new("chr2", 7, Box::new([0.])),
-            Record::new("chr4", 2, Box::new([0.])),
-            Record::new("chr4", 3, Box::new([0.])),
-            Record::new("chr5", 1, Box::new([0.])),
-            Record::new("chr7", 9, Box::new([0.])),
-            Record::new("chr8", 2, Box::new([0.])),
-            Record::new("chr9", 1, Box::new([0.])),
+        let right_records = records![
+            "chr1":1 => [0.],
+            "chr2":7 => [0.],
+            "chr4":2 => [0.],
+            "chr4":3 => [0.],
+            "chr5":1 => [0.],
+            "chr7":9 => [0.],
+            "chr8":2 => [0.],
+            "chr9":1 => [0.],
         ];
-        let right_reader = mock_reader(mock_writer(&right_records)?)?.unwrap();
+        let right_reader = reader!(right_records);
 
         let mut intersect = Intersect::new(left_reader, right_reader);
         let (mut left, mut right) = intersect.create_record_buf();
@@ -282,10 +301,8 @@ mod tests {
 
     #[test]
     fn test_intersect_finishes_with_shared_end() -> io::Result<()> {
-        let left_reader =
-            mock_reader(mock_writer(&[Record::new("chr1", 2, Box::new([0.]))])?)?.unwrap();
-        let right_reader =
-            mock_reader(mock_writer(&[Record::new("chr1", 2, Box::new([0.]))])?)?.unwrap();
+        let left_reader = reader!(records!("chr1":2 => [0.]));
+        let right_reader = reader!(records!("chr1":2 => [0.]));
         let mut intersect = Intersect::new(left_reader, right_reader);
 
         let (mut left, mut right) = intersect.create_record_buf();
