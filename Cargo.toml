@@ -15,3 +15,4 @@ libdeflate = ["bgzf/libdeflater"]
 [dependencies]
 bgzf = { package = "noodles-bgzf", version = "0.10" }
 byteorder = "1.4"
+indexmap = "1.8"
