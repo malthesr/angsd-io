@@ -84,7 +84,8 @@ pub mod ext {
     }
 }
 
-pub(self) const MAGIC_NUMBER: &[u8; 8] = &[b's', b'a', b'f', b'v', b'3', 0, 0, 0];
+/// SAF file magic number.
+pub const MAGIC_NUMBER: &[u8; 8] = &[b's', b'a', b'f', b'v', b'3', 0, 0, 0];
 
 pub(self) type Endian = byteorder::LittleEndian;
 
