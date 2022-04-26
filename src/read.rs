@@ -24,7 +24,7 @@ impl ReadStatus {
     where
         R: io::BufRead,
     {
-        // FIXME: This can use io::BufRead::has_data_left if/when it stabilizes, see
+        // TODO: This can use io::BufRead::has_data_left if/when it stabilizes, see
         // tracking issue github.com/rust-lang/rust/issues/86423
         reader.fill_buf().map(|b| match b.is_empty() {
             true => Self::Done,
