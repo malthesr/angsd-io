@@ -60,12 +60,12 @@ where
 
     /// Creates a new intersecting reader from a collection of readers.
     ///
-    /// # Returns
+    /// # Panics
     ///
-    /// Returns `None` if `readers` contains less than two readers.
-    pub fn new(readers: Vec<BgzfReader<R>>) -> Option<Self> {
+    /// Panics if `readers` is empty.
+    pub fn new(readers: Vec<BgzfReader<R>>) -> Self {
         match readers.as_slice() {
-            [] | [_] => None,
+            [] => panic!("cannot construct empty intersection"),
             [fst, tl @ ..] => {
                 let mut contigs = Contigs::from(fst.index());
                 for reader in tl.iter() {
@@ -74,11 +74,11 @@ where
 
                 let ids = vec![0; readers.len()];
 
-                Some(Self {
+                Self {
                     readers,
                     contigs,
                     ids,
-                })
+                }
             }
         }
     }

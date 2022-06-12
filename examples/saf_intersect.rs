@@ -15,8 +15,7 @@ fn main() -> io::Result<()> {
 
     // Note also the [`BgzfReader::intersect`] and [`Intersect::intersect`] methods to construct
     // intersecting reader when the number of readers are statically known.
-    let mut intersect =
-        saf::reader::Intersect::new(readers).expect("at least two SAF member file paths required");
+    let mut intersect = saf::reader::Intersect::new(readers);
 
     let stdout = io::stdout();
     let mut writer = stdout.lock();
