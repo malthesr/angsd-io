@@ -2,7 +2,10 @@
 
 use std::{fs, io, mem, path::Path};
 
-use super::{ext::*, index, Record};
+use super::{
+    ext::{member_paths_from_prefix, prefix_from_member_path},
+    index, Record,
+};
 
 mod position_writer;
 pub use position_writer::{BgzfPositionWriter, PositionWriter};
@@ -190,7 +193,9 @@ impl BgzfWriter<io::BufWriter<fs::File>, io::BufWriter<fs::File>> {
     where
         P: AsRef<Path>,
     {
-        let prefix = super::ext::prefix_from_member_path(&member_path).ok_or_else(|| {
+        let s = member_path.as_ref().to_string_lossy();
+
+        let prefix = prefix_from_member_path(&s).ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!(
@@ -232,9 +237,8 @@ impl BgzfWriter<io::BufWriter<fs::File>, io::BufWriter<fs::File>> {
     where
         P: AsRef<Path>,
     {
-        let index_path = prefix.as_ref().with_extension(INDEX_EXT);
-        let position_path = prefix.as_ref().with_extension(POSITIONS_FILE_EXT);
-        let value_path = prefix.as_ref().with_extension(VALUES_FILE_EXT);
+        let [index_path, position_path, value_path] =
+            member_paths_from_prefix(&prefix.as_ref().to_string_lossy());
 
         Self::from_bgzf_paths(index_path, position_path, value_path)
     }

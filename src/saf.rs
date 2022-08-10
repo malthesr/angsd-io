@@ -25,6 +25,8 @@
 
 use std::io;
 
+pub mod ext;
+
 pub mod index;
 pub use index::Index;
 
@@ -36,53 +38,6 @@ pub use record::{IdRecord, Record};
 
 pub mod writer;
 pub use writer::{BgzfWriter, Writer};
-
-pub mod ext {
-    //! Conventional file name extensions for SAF files.
-
-    use std::path::Path;
-
-    /// Conventional index file extension.
-    pub const INDEX_EXT: &str = "saf.idx";
-
-    /// Conventional positions file extension.
-    pub const POSITIONS_FILE_EXT: &str = "saf.pos.gz";
-
-    /// Conventional values file extension.
-    pub const VALUES_FILE_EXT: &str = "saf.gz";
-
-    const EXTS: [&str; 3] = [INDEX_EXT, POSITIONS_FILE_EXT, VALUES_FILE_EXT];
-
-    pub(super) fn prefix_from_member_path<P>(member_path: &P) -> Option<&str>
-    where
-        P: AsRef<Path>,
-    {
-        let s = member_path.as_ref().as_os_str().to_str()?;
-
-        EXTS.into_iter()
-            .find(|ext| s.ends_with(ext))
-            .and_then(|ext| s.strip_suffix(ext))
-            .and_then(|s_stem| s_stem.strip_suffix('.'))
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn test_prefix_from_member_path() {
-            assert_eq!(prefix_from_member_path(&"foo.saf.idx"), Some("foo"));
-            assert_eq!(
-                prefix_from_member_path(&"dir/bar.saf.pos.gz"),
-                Some("dir/bar")
-            );
-            assert_eq!(
-                prefix_from_member_path(&"/home/dir/baz.saf.gz"),
-                Some("/home/dir/baz"),
-            );
-        }
-    }
-}
 
 /// SAF file magic number.
 pub const MAGIC_NUMBER: &[u8; 8] = &[b's', b'a', b'f', b'v', b'3', 0, 0, 0];
