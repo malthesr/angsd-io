@@ -105,16 +105,12 @@ where
     }
 
     /// Reads a single record.
-    ///
-    /// Note that the `record` must have a number of values defined in accordance with the number
-    /// of values in the SAF values file. See [`Self::create_record_buf`] to create such a record
-    /// based on the provided index.
-    pub fn read_record(&mut self, record: &mut Record<Id, Likelihoods>) -> io::Result<ReadStatus> {
+    pub fn read_record(&mut self, record: &mut Record<Id, V::Contents>) -> io::Result<ReadStatus> {
         if !self.position.contig_is_finished() || self.position.next_contig(&self.index).is_some() {
             // Index still contains data, read and check that readers are not at EoF
             match (
                 self.position_reader.read_position()?,
-                self.value_reader.read_values(record.contents_mut())?,
+                V::read_contents(&mut self.value_reader, record.contents_mut())?,
             ) {
                 (Some(pos), ReadStatus::NotDone) => {
                     *record.contig_id_mut() = self.position.contig_id();
