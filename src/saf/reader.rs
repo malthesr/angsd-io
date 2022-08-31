@@ -97,6 +97,11 @@ where
         &mut self.position_reader
     }
 
+    /// Reads a single item from the item reader into the provided buffer.
+    fn read_item(&mut self, buf: &mut V::Item) -> io::Result<ReadStatus> {
+        V::read_item(&mut self.item_reader, buf)
+    }
+
     /// Reads and checks the magic numbers.
     ///
     /// Assumes the streams are positioned at the beginning of the files.
@@ -104,14 +109,16 @@ where
         V::read_magic(&mut self.position_reader).and_then(|_| V::read_magic(&mut self.item_reader))
     }
 
+    /// Reads a single position from the item reader.
+    fn read_position(&mut self) -> io::Result<Option<u32>> {
+        self.position_reader.read_position()
+    }
+
     /// Reads a single record.
     pub fn read_record(&mut self, record: &mut Record<Id, V::Item>) -> io::Result<ReadStatus> {
         if !self.position.contig_is_finished() || self.position.next_contig(&self.index).is_some() {
             // Index still contains data, read and check that readers are not at EoF
-            match (
-                self.position_reader.read_position()?,
-                V::read_item(&mut self.item_reader, record.item_mut())?,
-            ) {
+            match (self.read_position()?, self.read_item(record.item_mut())?) {
                 (Some(pos), ReadStatus::NotDone) => {
                     *record.contig_id_mut() = self.position.contig_id();
                     *record.position_mut() = pos;
