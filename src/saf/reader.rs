@@ -7,14 +7,15 @@ use crate::ReadStatus;
 use super::{
     ext::{member_paths_from_prefix, prefix_from_member_path},
     index::Index,
-    IdRecord, Version, V3,
+    record::{Id, Likelihoods, Record},
+    Version,
 };
 
 mod intersect;
 pub use intersect::Intersect;
 
 mod traits;
-pub use traits::ReaderExt;
+pub use traits::{ReadableInto, ReaderExt};
 
 /// A BGZF SAF reader.
 ///
@@ -23,7 +24,7 @@ pub use traits::ReaderExt;
 pub type BgzfReader<R, V> = Reader<bgzf::Reader<R>, V>;
 
 /// A SAF reader.
-pub struct Reader<R, V: Version = V3> {
+pub struct Reader<R, V> {
     index: Index,
     position_reader: R,
     value_reader: R,
@@ -40,8 +41,8 @@ where
     ///
     /// The [`Self::read_record`] method requires an input record buffer with the correct number of
     /// alleles. This method creates such a record, using the number of alleles defined in the index.
-    pub fn create_record_buf(&self) -> IdRecord {
-        IdRecord::from_alleles(0, 1, self.index.alleles())
+    pub fn create_record_buf(&self) -> Record<Id, Likelihoods> {
+        Record::from_alleles(0, 1, self.index.alleles())
     }
 
     /// Returns the index.
@@ -108,12 +109,12 @@ where
     /// Note that the `record` must have a number of values defined in accordance with the number
     /// of values in the SAF values file. See [`Self::create_record_buf`] to create such a record
     /// based on the provided index.
-    pub fn read_record(&mut self, record: &mut IdRecord) -> io::Result<ReadStatus> {
+    pub fn read_record(&mut self, record: &mut Record<Id, Likelihoods>) -> io::Result<ReadStatus> {
         if !self.position.contig_is_finished() || self.position.next_contig(&self.index).is_some() {
             // Index still contains data, read and check that readers are not at EoF
             match (
                 self.position_reader.read_position()?,
-                self.value_reader.read_values(record.values_mut())?,
+                self.value_reader.read_values(record.contents_mut())?,
             ) {
                 (Some(pos), ReadStatus::NotDone) => {
                     *record.contig_id_mut() = self.position.contig_id();

@@ -16,7 +16,7 @@ fn main() -> io::Result<()> {
 
     let mut buf = String::new();
     while reader.read_line(&mut buf)? != 0 {
-        let record: saf::Record<String> = buf.parse()?;
+        let record: saf::Record<String, saf::record::Likelihoods> = buf.parse()?;
         writer.write_record(&record)?;
         buf.clear();
     }

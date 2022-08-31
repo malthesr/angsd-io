@@ -56,3 +56,16 @@ where
         self.read_f32_into::<LE>(buf).map(|_| ReadStatus::NotDone)
     }
 }
+
+/// A type that can be read into a provided buffer.
+pub trait ReadableInto {
+    /// The result type returned.
+    ///
+    /// This will typically either be unit or a [`ReadStatus`].
+    type Return;
+
+    /// Reads an item into the provided buffer.
+    fn read_into<R>(reader: &mut R, buf: &mut Self) -> io::Result<Self::Return>
+    where
+        R: io::BufRead;
+}

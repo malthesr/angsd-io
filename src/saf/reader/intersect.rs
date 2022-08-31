@@ -3,11 +3,14 @@ use std::{cmp::Ordering, io};
 use indexmap::IndexMap;
 
 use crate::{
-    saf::{Version, V3},
+    saf::{
+        record::{Id, Likelihoods, Record},
+        Version, V3,
+    },
     ReadStatus,
 };
 
-use super::{BgzfReader, IdRecord, Index};
+use super::{BgzfReader, Index};
 
 /// An intersection of BGZF SAF file readers.
 ///
@@ -28,7 +31,7 @@ where
     /// The [`Self::read_records`] method requires a collection of record buffers of the correct
     /// length and with the correct number of alleles. This method creates such a record collection,
     /// using the number of alleles defined in the indexes.
-    pub fn create_record_bufs(&self) -> Vec<IdRecord> {
+    pub fn create_record_bufs(&self) -> Vec<Record<Id, Likelihoods>> {
         self.readers
             .iter()
             .map(|reader| reader.create_record_buf())
@@ -95,7 +98,7 @@ where
     /// Note that the number of provided buffers and their contents must match the inner readers
     /// and their contents, respectively. See [`Self::create_record_bufs`] to create an appropriate
     /// collection of buffers based on the reader indices.
-    pub fn read_records(&mut self, bufs: &mut [IdRecord]) -> io::Result<ReadStatus> {
+    pub fn read_records(&mut self, bufs: &mut [Record<Id, Likelihoods>]) -> io::Result<ReadStatus> {
         for ((reader, record), id) in self
             .readers
             .iter_mut()
@@ -128,7 +131,10 @@ where
         }
     }
 
-    fn read_until_shared_contig(&mut self, bufs: &mut [IdRecord]) -> io::Result<ReadStatus> {
+    fn read_until_shared_contig(
+        &mut self,
+        bufs: &mut [Record<Id, Likelihoods>],
+    ) -> io::Result<ReadStatus> {
         let mut next_idx = 0;
         for (reader, buf) in self.readers.iter_mut().zip(bufs.iter_mut()) {
             match self.contigs.next_shared(*buf.contig_id(), reader.index()) {
@@ -161,11 +167,11 @@ where
 
     fn read_until_shared_position_on_contig(
         &mut self,
-        bufs: &mut [IdRecord],
+        bufs: &mut [Record<Id, Likelihoods>],
     ) -> io::Result<Option<ReadStatus>> {
         let mut max_pos = bufs
             .iter()
-            .map(IdRecord::position)
+            .map(Record::position)
             .max()
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "empty buffer slice"))?;
 

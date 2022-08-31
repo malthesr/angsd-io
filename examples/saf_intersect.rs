@@ -27,7 +27,7 @@ fn main() -> io::Result<()> {
             let position = buf.position();
             write!(writer, "{contig}\t{position}")?;
 
-            for value in buf.values() {
+            for value in buf.contents() {
                 write!(writer, "\t{value:.2}")?;
             }
 

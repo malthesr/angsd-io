@@ -4,7 +4,9 @@ use std::{fs, io, marker::PhantomData, mem, path::Path};
 
 use super::{
     ext::{member_paths_from_prefix, prefix_from_member_path},
-    index, Record, Version, V3,
+    index,
+    record::{Likelihoods, Record},
+    Version, V3,
 };
 
 mod position_writer;
@@ -101,9 +103,9 @@ where
     V: Version,
 {
     /// Writes a single record.
-    pub fn write_record<T>(&mut self, record: &Record<T>) -> io::Result<()>
+    pub fn write_record<I>(&mut self, record: &Record<I, Likelihoods>) -> io::Result<()>
     where
-        T: AsRef<str>,
+        I: AsRef<str>,
     {
         let contig_id = record.contig_id().as_ref();
 
@@ -144,7 +146,7 @@ where
 
         // Write record
         self.position_writer.write_position(record.position())?;
-        self.value_writer.write_values(record.values())?;
+        self.value_writer.write_values(record.contents())?;
 
         Ok(())
     }

@@ -32,7 +32,7 @@ pub mod reader;
 pub use reader::{BgzfReader, Reader};
 
 pub mod record;
-pub use record::{IdRecord, Record};
+pub use record::Record;
 
 mod version;
 pub use version::{Version, V3};
@@ -110,7 +110,7 @@ pub(self) mod tests {
                     crate::saf::Record::new(
                         $contig,
                         $pos,
-                        Box::new([$($v),+]),
+                        vec![$($v),+],
                     ),
                 )+
             ]
@@ -121,7 +121,7 @@ pub(self) mod tests {
                     crate::saf::Record::new(
                         $contig,
                         $pos,
-                        Box::new([0.]),
+                        vec![0.],
                     ),
                 )+
             ]
@@ -165,7 +165,7 @@ pub(self) mod tests {
         let mut i = 0;
         let mut record = reader.create_record_buf();
         while reader.read_record(&mut record)?.is_not_done() {
-            assert_eq!(record.values()[0], i as f32);
+            assert_eq!(record.contents()[0], i as f32);
 
             i += 1;
         }
