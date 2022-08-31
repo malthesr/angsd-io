@@ -3,7 +3,7 @@ use std::{fs, io, path::Path};
 use byteorder::ReadBytesExt;
 
 use crate::{
-    saf::{read_magic, Endian},
+    saf::{Endian, Version, V3},
     ReadStatus,
 };
 
@@ -46,13 +46,6 @@ where
         Self { inner }
     }
 
-    /// Reads and checks the magic number.
-    ///
-    /// Assumes the stream is positioned at the beginning of the file.
-    pub fn read_magic(&mut self) -> io::Result<()> {
-        read_magic(&mut self.inner)
-    }
-
     /// Reads a single value.
     pub fn read_value(&mut self) -> io::Result<f32> {
         self.inner.read_f32::<Endian>()
@@ -86,7 +79,7 @@ impl ValueReader<io::BufReader<fs::File>> {
             .map(io::BufReader::new)
             .map(Self::new)?;
 
-        reader.read_magic()?;
+        V3::read_magic(&mut reader.inner)?;
 
         Ok(reader)
     }
@@ -117,7 +110,7 @@ impl BgzfValueReader<io::BufReader<fs::File>> {
             .map(io::BufReader::new)
             .map(Self::from_bgzf)?;
 
-        reader.read_magic()?;
+        V3::read_magic(&mut reader.inner)?;
 
         Ok(reader)
     }

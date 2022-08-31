@@ -1,17 +1,19 @@
-use std::{fs, io, path::Path};
+use std::{fs, io, marker::PhantomData, path::Path};
 
-use crate::saf::write_magic;
+use crate::saf::{Version, V3};
 
 use super::{Index, Record};
 
 /// A SAF index writer.
-pub struct Writer<W> {
+pub struct Writer<W, V: Version = V3> {
     inner: W,
+    v: PhantomData<V>,
 }
 
-impl<W> Writer<W>
+impl<W, V> Writer<W, V>
 where
     W: io::Write,
+    V: Version,
 {
     /// Returns the inner writer.
     pub fn get_mut(&mut self) -> &mut W {
@@ -30,7 +32,10 @@ where
 
     /// Creates a new writer.
     pub fn new(inner: W) -> Self {
-        Self { inner }
+        Self {
+            inner,
+            v: PhantomData,
+        }
     }
 
     /// Writes the alleles.
@@ -55,7 +60,7 @@ where
 
     /// Writes the magic number.
     pub fn write_magic(&mut self) -> io::Result<()> {
-        write_magic(&mut self.inner)
+        V::write_magic(&mut self.inner)
     }
 
     /// Writes a single record.
@@ -73,7 +78,10 @@ where
     }
 }
 
-impl Writer<io::BufWriter<fs::File>> {
+impl<V> Writer<io::BufWriter<fs::File>, V>
+where
+    V: Version,
+{
     /// Creates a new writer from a path.
     ///
     /// If the path already exists, it will be overwritten.
@@ -93,9 +101,10 @@ impl Writer<io::BufWriter<fs::File>> {
     }
 }
 
-impl<W> From<W> for Writer<W>
+impl<W, V> From<W> for Writer<W, V>
 where
     W: io::Write,
+    V: Version,
 {
     fn from(inner: W) -> Self {
         Self::new(inner)

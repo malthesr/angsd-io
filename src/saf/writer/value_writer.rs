@@ -2,7 +2,7 @@ use std::{fs, io, path::Path};
 
 use byteorder::WriteBytesExt;
 
-use crate::saf::{write_magic, Endian};
+use crate::saf::{Endian, Version, V3};
 
 /// A BGZF SAF value writer.
 ///
@@ -55,7 +55,7 @@ where
 
     /// Writes the magic number.
     pub fn write_magic(&mut self) -> io::Result<()> {
-        write_magic(&mut self.inner)
+        V3::write_magic(&mut self.inner)
     }
 }
 

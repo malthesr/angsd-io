@@ -1,13 +1,13 @@
 //! Reading of the SAF format.
 
-use std::{fs, io, path::Path};
+use std::{fs, io, marker::PhantomData, path::Path};
 
 use crate::ReadStatus;
 
 use super::{
     ext::{member_paths_from_prefix, prefix_from_member_path},
     index::Index,
-    IdRecord,
+    IdRecord, Version, V3,
 };
 
 mod intersect;
@@ -23,19 +23,21 @@ pub use value_reader::{BgzfValueReader, ValueReader};
 ///
 /// Note that this is a type alias for a [`Reader`], and most methods are
 /// available via the [`Reader`] type.
-pub type BgzfReader<R> = Reader<bgzf::Reader<R>>;
+pub type BgzfReader<R, V> = Reader<bgzf::Reader<R>, V>;
 
 /// A SAF reader.
-pub struct Reader<R> {
+pub struct Reader<R, V: Version = V3> {
     index: Index,
     position_reader: PositionReader<R>,
     value_reader: ValueReader<R>,
     position: ReaderPosition,
+    v: PhantomData<V>,
 }
 
-impl<R> Reader<R>
+impl<R, V> Reader<R, V>
 where
     R: io::BufRead,
+    V: Version,
 {
     /// Returns a new record suitable for use in reading.
     ///
@@ -77,6 +79,7 @@ where
             position_reader,
             value_reader,
             position,
+            v: PhantomData,
         })
     }
 
@@ -104,9 +107,8 @@ where
     ///
     /// Assumes the streams are positioned at the beginning of the files.
     pub fn read_magic(&mut self) -> io::Result<()> {
-        self.position_reader
-            .read_magic()
-            .and_then(|_| self.value_reader.read_magic())
+        V::read_magic(self.position_reader.get_mut())
+            .and_then(|_| V::read_magic(self.value_reader.get_mut()))
     }
 
     /// Reads a single record.
@@ -161,16 +163,17 @@ where
     }
 }
 
-impl<R> BgzfReader<R>
+impl<R, V> BgzfReader<R, V>
 where
     R: io::BufRead + io::Seek,
+    V: Version,
 {
     /// Creates an intersection of two readers.
     ///
     /// The resulting intersecting readers will read only records that lie on the same contigs
     /// and the same positions. Further readers can be added to the resulting intersecting reader
     /// by chaining the [`Intersect::intersect`] method.
-    pub fn intersect(self, other: Self) -> Intersect<R> {
+    pub fn intersect(self, other: Self) -> Intersect<R, V> {
         Intersect::from_reader(self).intersect(other)
     }
 
@@ -218,29 +221,10 @@ where
     }
 }
 
-impl Reader<io::BufReader<fs::File>> {
-    /// Creates a new reader from paths.
-    ///
-    /// Note that the constructed reader will not be a BGZF reader.
-    /// To construct a BGZF reader from paths, see the
-    /// [`BgzfReader::from_bgzf_paths`] constructor.
-    ///
-    /// The stream will be positioned immediately after the magic number.
-    pub fn from_paths<P>(index_path: P, position_path: P, value_path: P) -> io::Result<Self>
-    where
-        P: AsRef<Path>,
-    {
-        let index = Index::read_from_path(index_path)?;
-        let position_reader = PositionReader::from_path(position_path)?;
-        let value_reader = ValueReader::from_path(value_path)?;
-
-        Self::new(index, position_reader, value_reader).ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidData, "SAF index contains no records")
-        })
-    }
-}
-
-impl BgzfReader<io::BufReader<fs::File>> {
+impl<V> BgzfReader<io::BufReader<fs::File>, V>
+where
+    V: Version,
+{
     /// Creates a new BGZF reader from any member path.
     ///
     /// This method relies on stripping a conventional suffix from the member path and

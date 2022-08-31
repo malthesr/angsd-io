@@ -1,6 +1,6 @@
 use std::{fs, io, path::Path};
 
-use crate::saf::read_magic;
+use crate::saf::{Version, V3};
 
 const BYTES: usize = std::mem::size_of::<u32>();
 
@@ -45,13 +45,6 @@ where
             inner,
             buf: [0; BYTES],
         }
-    }
-
-    /// Reads the checks the magic number.
-    ///
-    /// Assumes the stream is positioned at the beginning of the file.
-    pub fn read_magic(&mut self) -> io::Result<()> {
-        read_magic(&mut self.inner)
     }
 
     /// Reads a single position.
@@ -104,7 +97,7 @@ impl PositionReader<io::BufReader<fs::File>> {
             .map(io::BufReader::new)
             .map(Self::new)?;
 
-        reader.read_magic()?;
+        V3::read_magic(&mut reader.inner)?;
 
         Ok(reader)
     }
@@ -135,7 +128,7 @@ impl BgzfPositionReader<io::BufReader<fs::File>> {
             .map(io::BufReader::new)
             .map(Self::from_bgzf)?;
 
-        reader.read_magic()?;
+        V3::read_magic(&mut reader.inner)?;
 
         Ok(reader)
     }

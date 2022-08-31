@@ -1,15 +1,21 @@
-use std::fmt;
+use std::{fmt, marker::PhantomData};
+
+use crate::saf::{Version, V3};
 
 /// A SAF index record.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Record {
+pub struct Record<V: Version = V3> {
     name: String,
     sites: usize,
     position_offset: u64,
     value_offset: u64,
+    v: PhantomData<V>,
 }
 
-impl Record {
+impl<V> Record<V>
+where
+    V: Version,
+{
     /// Returns the reference sequence name, consuming `self`.
     pub fn into_name(self) -> String {
         self.name
@@ -32,6 +38,7 @@ impl Record {
             sites,
             position_offset,
             value_offset,
+            v: PhantomData,
         }
     }
 
@@ -80,7 +87,10 @@ impl Record {
     }
 }
 
-impl fmt::Display for Record {
+impl<V> fmt::Display for Record<V>
+where
+    V: Version,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "#contig=<ID={}, sites={}>", self.name, self.sites)
     }

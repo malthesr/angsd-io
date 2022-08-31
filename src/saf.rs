@@ -23,8 +23,6 @@
 //! The above examples are also available as runnable binaries,
 //! see the repository `examples/` folder.
 
-use std::io;
-
 pub mod ext;
 
 pub mod index;
@@ -36,54 +34,27 @@ pub use reader::{BgzfReader, Reader};
 pub mod record;
 pub use record::{IdRecord, Record};
 
+mod version;
+pub use version::{Version, V3};
+
 pub mod writer;
 pub use writer::{BgzfWriter, Writer};
 
-/// SAF file magic number.
-pub const MAGIC_NUMBER: &[u8; 8] = &[b's', b'a', b'f', b'v', b'3', 0, 0, 0];
-
 pub(self) type Endian = byteorder::LittleEndian;
-
-pub(self) fn read_magic<R>(reader: &mut R) -> io::Result<()>
-where
-    R: io::Read + ?Sized,
-{
-    let mut magic = [0; 8];
-    reader.read_exact(&mut magic)?;
-
-    if &magic == MAGIC_NUMBER {
-        Ok(())
-    } else {
-        Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            format!(
-                "invalid or unsupported SAF magic number \
-                (found '{magic:02x?}', expected '{MAGIC_NUMBER:02x?}')"
-            ),
-        ))
-    }
-}
-
-pub(self) fn write_magic<W>(writer: &mut W) -> io::Result<()>
-where
-    W: io::Write,
-{
-    writer.write_all(MAGIC_NUMBER)
-}
 
 #[cfg(test)]
 pub(self) mod tests {
     use super::*;
 
-    use std::io::Seek;
+    use std::io::{self, Seek};
 
     use crate::saf::{
         reader::{BgzfPositionReader, BgzfValueReader},
         writer::{BgzfPositionWriter, BgzfValueWriter},
     };
 
-    pub type MockBgzfReader = BgzfReader<io::Cursor<Vec<u8>>>;
-    pub type MockBgzfWriter = BgzfWriter<io::Cursor<Vec<u8>>, io::Cursor<Vec<u8>>>;
+    pub type MockBgzfReader = BgzfReader<io::Cursor<Vec<u8>>, V3>;
+    pub type MockBgzfWriter = BgzfWriter<io::Cursor<Vec<u8>>, io::Cursor<Vec<u8>>, V3>;
 
     impl MockBgzfWriter {
         pub fn create() -> Self {
@@ -109,14 +80,14 @@ pub(self) mod tests {
             position_cursor.seek(io::SeekFrom::Start(0)).unwrap();
             value_cursor.seek(io::SeekFrom::Start(0)).unwrap();
 
-            let mut index_reader = index::Reader::new(index_cursor);
+            let mut index_reader = index::Reader::<_, V3>::new(index_cursor);
             let index = index_reader.read_index().unwrap();
 
             let mut position_reader = BgzfPositionReader::from_bgzf(position_cursor);
-            position_reader.read_magic().unwrap();
+            V3::read_magic(position_reader.get_mut()).unwrap();
 
             let mut value_reader = BgzfValueReader::from_bgzf(value_cursor);
-            value_reader.read_magic().unwrap();
+            V3::read_magic(value_reader.get_mut()).unwrap();
 
             Self::new(index, position_reader, value_reader).unwrap()
         }

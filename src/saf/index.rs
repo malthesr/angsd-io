@@ -2,6 +2,8 @@
 
 use std::{fmt, io, path::Path};
 
+use super::{Version, V3};
+
 mod reader;
 pub use reader::Reader;
 
@@ -13,12 +15,12 @@ pub use writer::Writer;
 
 /// A SAF file index.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Index {
+pub struct Index<V: Version = V3> {
     alleles: usize,
-    records: Vec<Record>,
+    records: Vec<Record<V>>,
 }
 
-impl Index {
+impl Index<V3> {
     /// Returns the number of alleles.
     ///
     /// This is equal to `2N` for `N` diploid individuals.
@@ -38,26 +40,26 @@ impl Index {
     where
         P: AsRef<Path>,
     {
-        Reader::from_path(path).and_then(|mut reader| reader.read_index())
+        Reader::<_, V3>::from_path(path).and_then(|mut reader| reader.read_index())
     }
 
     /// Returns the index records, consuming `self`.
-    pub fn into_records(self) -> Vec<Record> {
+    pub fn into_records(self) -> Vec<Record<V3>> {
         self.records
     }
 
     /// Creates a new index.
-    pub fn new(alleles: usize, records: Vec<Record>) -> Self {
+    pub fn new(alleles: usize, records: Vec<Record<V3>>) -> Self {
         Self { alleles, records }
     }
 
     /// Returns the index records.
-    pub fn records(&self) -> &[Record] {
+    pub fn records(&self) -> &[Record<V3>] {
         self.records.as_ref()
     }
 
     /// Returns a mutable reference to the index records.
-    pub fn records_mut(&mut self) -> &mut Vec<Record> {
+    pub fn records_mut(&mut self) -> &mut Vec<Record<V3>> {
         &mut self.records
     }
 
@@ -73,7 +75,7 @@ impl Index {
     where
         P: AsRef<Path>,
     {
-        Writer::from_path(path).and_then(|mut writer| writer.write_index(self))
+        Writer::<_, V3>::from_path(path).and_then(|mut writer| writer.write_index(self))
     }
 }
 

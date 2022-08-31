@@ -1,19 +1,19 @@
-use std::{fs, io, mem, path::Path, string};
+use std::{fs, io, marker::PhantomData, mem, path::Path, string};
 
-use super::Record;
+use crate::saf::{Version, V3};
 
-use crate::saf::read_magic;
-
-use super::Index;
+use super::{Index, Record};
 
 /// A SAF index reader.
-pub struct Reader<R> {
+pub struct Reader<R, V: Version = V3> {
     inner: R,
+    v: PhantomData<V>,
 }
 
-impl<R> Reader<R>
+impl<R, V> Reader<R, V>
 where
     R: io::BufRead,
+    V: Version,
 {
     /// Returns the inner reader.
     pub fn get_mut(&mut self) -> &mut R {
@@ -32,7 +32,10 @@ where
 
     /// Creates a new reader.
     pub fn new(inner: R) -> Self {
-        Self { inner }
+        Self {
+            inner,
+            v: PhantomData,
+        }
     }
 
     /// Reads an entire index.
@@ -40,7 +43,7 @@ where
     /// The stream is assumed to be positioned at the beginning of the file.
     ///
     /// See also the [`Index::read_from_path`] convenience method.
-    pub fn read_index(&mut self) -> io::Result<Index> {
+    pub fn read_index(&mut self) -> io::Result<Index<V3>> {
         self.read_magic()?;
 
         let alleles = self.read_alleles()?;
@@ -94,11 +97,14 @@ where
     }
 
     fn read_magic(&mut self) -> io::Result<()> {
-        read_magic(&mut self.inner)
+        V::read_magic(&mut self.inner)
     }
 }
 
-impl Reader<io::BufReader<fs::File>> {
+impl<V> Reader<io::BufReader<fs::File>, V>
+where
+    V: Version,
+{
     /// Creates a new reader from a path.
     pub fn from_path<P>(path: P) -> io::Result<Self>
     where
@@ -108,9 +114,10 @@ impl Reader<io::BufReader<fs::File>> {
     }
 }
 
-impl<R> From<R> for Reader<R>
+impl<R, V> From<R> for Reader<R, V>
 where
     R: io::BufRead,
+    V: Version,
 {
     fn from(inner: R) -> Self {
         Self::new(inner)

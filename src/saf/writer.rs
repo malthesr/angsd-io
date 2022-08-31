@@ -1,10 +1,10 @@
 //! Writing of the SAF format.
 
-use std::{fs, io, mem, path::Path};
+use std::{fs, io, marker::PhantomData, mem, path::Path};
 
 use super::{
     ext::{member_paths_from_prefix, prefix_from_member_path},
-    index, Record,
+    index, Record, Version, V3,
 };
 
 mod position_writer;
@@ -13,73 +13,76 @@ pub use position_writer::{BgzfPositionWriter, PositionWriter};
 mod value_writer;
 pub use value_writer::{BgzfValueWriter, ValueWriter};
 
-const START_OFFSET: u64 = super::MAGIC_NUMBER.len() as u64;
+const START_OFFSET: u64 = 8;
 
 /// A BGZF SAF writer.
 ///
 /// Note that this is a type alias for a [`Writer`], and most methods are
 /// available via the [`Writer`] type.
-pub type BgzfWriter<V, W> = Writer<V, bgzf::Writer<W>>;
+pub type BgzfWriter<W1, W2, V> = Writer<W1, bgzf::Writer<W2>, V>;
 
 /// A SAF writer.
-pub struct Writer<V, W> {
-    index_writer: index::Writer<V>,
-    position_writer: PositionWriter<W>,
-    value_writer: ValueWriter<W>,
+pub struct Writer<W1, W2, V: Version = V3> {
+    index_writer: index::Writer<W1>,
+    position_writer: PositionWriter<W2>,
+    value_writer: ValueWriter<W2>,
     index_record: Option<index::Record>,
+    v: PhantomData<V>,
 }
 
-impl<V, W> Writer<V, W>
+impl<W1, W2, V> Writer<W1, W2, V>
 where
-    V: io::Write,
-    W: io::Write,
+    W1: io::Write,
+    W2: io::Write,
+    V: Version,
 {
     /// Returns the index writer.
-    pub fn index_writer(&self) -> &index::Writer<V> {
+    pub fn index_writer(&self) -> &index::Writer<W1> {
         &self.index_writer
     }
 
     /// Returns a mutable reference to the index.
-    pub fn index_writer_mut(&mut self) -> &mut index::Writer<V> {
+    pub fn index_writer_mut(&mut self) -> &mut index::Writer<W1> {
         &mut self.index_writer
     }
 
     /// Returns the inner index, position writer, and value writer, consuming `self`.
-    pub fn into_parts(self) -> (index::Writer<V>, PositionWriter<W>, ValueWriter<W>) {
+    pub fn into_parts(self) -> (index::Writer<W1>, PositionWriter<W2>, ValueWriter<W2>) {
         (self.index_writer, self.position_writer, self.value_writer)
     }
 
     /// Creates a new writer.
     pub fn new(
-        index_writer: index::Writer<V>,
-        position_writer: PositionWriter<W>,
-        value_writer: ValueWriter<W>,
+        index_writer: index::Writer<W1>,
+        position_writer: PositionWriter<W2>,
+        value_writer: ValueWriter<W2>,
     ) -> Self {
         Self {
             index_writer,
             position_writer,
             value_writer,
             index_record: None,
+            v: PhantomData,
         }
     }
 
     /// Returns the inner position writer.
-    pub fn position_writer(&self) -> &PositionWriter<W> {
+    pub fn position_writer(&self) -> &PositionWriter<W2> {
         &self.position_writer
     }
 
     /// Returns a mutable reference to the inner position writer.
-    pub fn position_writer_mut(&mut self) -> &mut PositionWriter<W> {
+    pub fn position_writer_mut(&mut self) -> &mut PositionWriter<W2> {
         &mut self.position_writer
     }
 
     /// Returns the inner value writer.
-    pub fn value_writer(&self) -> &ValueWriter<W> {
+    pub fn value_writer(&self) -> &ValueWriter<W2> {
         &self.value_writer
     }
 
     /// Returns a mutable reference to the inner value writer.
-    pub fn value_writer_mut(&mut self) -> &mut ValueWriter<W> {
+    pub fn value_writer_mut(&mut self) -> &mut ValueWriter<W2> {
         &mut self.value_writer
     }
 
@@ -91,30 +94,11 @@ where
     }
 }
 
-impl Writer<io::BufWriter<fs::File>, io::BufWriter<fs::File>> {
-    /// Creates a new writer from paths.
-    ///
-    /// Note that the constructed writer will not be a BGZF writer.
-    /// To construct a BGZF writer from paths, see the
-    /// [`BgzfWriter::from_bgzf_paths`] constructor.
-    ///
-    /// The magic number will be written to the paths.
-    pub fn from_paths<P>(index_path: P, position_path: P, value_path: P) -> io::Result<Self>
-    where
-        P: AsRef<Path>,
-    {
-        let index_writer = index::Writer::from_path(index_path)?;
-        let position_writer = PositionWriter::from_path(position_path)?;
-        let value_writer = ValueWriter::from_path(value_path)?;
-
-        Ok(Self::new(index_writer, position_writer, value_writer))
-    }
-}
-
-impl<V, W> BgzfWriter<V, W>
+impl<W1, W2, V> BgzfWriter<W1, W2, V>
 where
-    V: io::Write,
-    W: io::Write,
+    W1: io::Write,
+    W2: io::Write,
+    V: Version,
 {
     /// Writes a single record.
     pub fn write_record<T>(&mut self, record: &Record<T>) -> io::Result<()>
@@ -166,7 +150,7 @@ where
     }
 
     /// Finishes writing.
-    pub fn finish(mut self) -> io::Result<(V, W, W)> {
+    pub fn finish(mut self) -> io::Result<(W1, W2, W2)> {
         if let Some(record) = self.index_record {
             self.index_writer.write_record(&record)?;
         }
@@ -179,7 +163,10 @@ where
     }
 }
 
-impl BgzfWriter<io::BufWriter<fs::File>, io::BufWriter<fs::File>> {
+impl<V> BgzfWriter<io::BufWriter<fs::File>, io::BufWriter<fs::File>, V>
+where
+    V: Version,
+{
     /// Creates a new BGZF writer from any member path.
     ///
     /// This method relies on stripping a conventional suffix from the member path and

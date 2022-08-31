@@ -2,22 +2,26 @@ use std::{cmp::Ordering, io};
 
 use indexmap::IndexMap;
 
-use crate::ReadStatus;
+use crate::{
+    saf::{Version, V3},
+    ReadStatus,
+};
 
 use super::{BgzfReader, IdRecord, Index};
 
 /// An intersection of BGZF SAF file readers.
 ///
 /// Created by the [`BgzfReader::intersect`] method.
-pub struct Intersect<R> {
-    readers: Vec<BgzfReader<R>>,
+pub struct Intersect<R, V: Version = V3> {
+    readers: Vec<BgzfReader<R, V>>,
     contigs: Contigs,
     ids: Vec<usize>,
 }
 
-impl<R> Intersect<R>
+impl<R, V> Intersect<R, V>
 where
     R: io::BufRead + io::Seek,
+    V: Version,
 {
     /// Returns a new collection of records suitable for use in reading.
     ///
@@ -36,7 +40,7 @@ where
     /// Since `self` is consumed, rather than mutated, this can be chained to build intersections
     /// of multiple readers. See also the [`BgzfReader::intersect`] method for a way to start create
     /// the initial intersecting reader.
-    pub fn intersect(mut self, reader: BgzfReader<R>) -> Self {
+    pub fn intersect(mut self, reader: BgzfReader<R, V>) -> Self {
         self.contigs.add_index(reader.index());
         self.readers.push(reader);
         self.ids.push(0);
@@ -44,17 +48,17 @@ where
     }
 
     /// Returns the inner readers.
-    pub fn get_readers(&self) -> &[BgzfReader<R>] {
+    pub fn get_readers(&self) -> &[BgzfReader<R, V>] {
         &self.readers
     }
 
     /// Returns a mutable reference to the inner readers.
-    pub fn get_readers_mut(&mut self) -> &mut [BgzfReader<R>] {
+    pub fn get_readers_mut(&mut self) -> &mut [BgzfReader<R, V>] {
         &mut self.readers
     }
 
     /// Returns the inner readers, consuming `self`.
-    pub fn into_readers(self) -> Vec<BgzfReader<R>> {
+    pub fn into_readers(self) -> Vec<BgzfReader<R, V>> {
         self.readers
     }
 
@@ -63,7 +67,7 @@ where
     /// # Panics
     ///
     /// Panics if `readers` is empty.
-    pub fn new(readers: Vec<BgzfReader<R>>) -> Self {
+    pub fn new(readers: Vec<BgzfReader<R, V>>) -> Self {
         match readers.as_slice() {
             [] => panic!("cannot construct empty intersection"),
             [fst, tl @ ..] => {
@@ -116,7 +120,7 @@ where
         }
     }
 
-    pub(crate) fn from_reader(reader: BgzfReader<R>) -> Self {
+    pub(crate) fn from_reader(reader: BgzfReader<R, V>) -> Self {
         Self {
             contigs: Contigs::from(reader.index()),
             readers: vec![reader],
@@ -277,7 +281,7 @@ mod tests {
 
     use crate::saf::tests::*;
 
-    fn test_intersect<R>(mut intersect: Intersect<R>, shared: &[(&str, u32)]) -> io::Result<()>
+    fn test_intersect<R>(mut intersect: Intersect<R, V3>, shared: &[(&str, u32)]) -> io::Result<()>
     where
         R: io::BufRead + io::Seek,
     {
