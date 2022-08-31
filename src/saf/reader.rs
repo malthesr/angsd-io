@@ -13,11 +13,8 @@ use super::{
 mod intersect;
 pub use intersect::Intersect;
 
-mod position_reader;
-pub use position_reader::{BgzfPositionReader, PositionReader};
-
-mod value_reader;
-pub use value_reader::{BgzfValueReader, ValueReader};
+mod traits;
+pub use traits::ReaderExt;
 
 /// A BGZF SAF reader.
 ///
@@ -28,8 +25,8 @@ pub type BgzfReader<R, V> = Reader<bgzf::Reader<R>, V>;
 /// A SAF reader.
 pub struct Reader<R, V: Version = V3> {
     index: Index,
-    position_reader: PositionReader<R>,
-    value_reader: ValueReader<R>,
+    position_reader: R,
+    value_reader: R,
     position: ReaderPosition,
     v: PhantomData<V>,
 }
@@ -58,7 +55,7 @@ where
     }
 
     /// Returns the inner index, position reader, and value reader, consuming `self`.
-    pub fn into_parts(self) -> (Index, PositionReader<R>, ValueReader<R>) {
+    pub fn into_parts(self) -> (Index, R, R) {
         (self.index, self.position_reader, self.value_reader)
     }
 
@@ -67,11 +64,7 @@ where
     /// # Returns
     ///
     /// `None` if `index` contains no records.
-    pub fn new(
-        index: Index,
-        position_reader: PositionReader<R>,
-        value_reader: ValueReader<R>,
-    ) -> Option<Self> {
+    pub fn new(index: Index, position_reader: R, value_reader: R) -> Option<Self> {
         let position = ReaderPosition::setup(&index)?;
 
         Some(Self {
@@ -84,22 +77,22 @@ where
     }
 
     /// Returns the inner position reader.
-    pub fn position_reader(&self) -> &PositionReader<R> {
+    pub fn position_reader(&self) -> &R {
         &self.position_reader
     }
 
     /// Returns a mutable reference to the inner position reader.
-    pub fn position_reader_mut(&mut self) -> &mut PositionReader<R> {
+    pub fn position_reader_mut(&mut self) -> &mut R {
         &mut self.position_reader
     }
 
     /// Returns the inner value reader.
-    pub fn value_reader(&self) -> &ValueReader<R> {
+    pub fn value_reader(&self) -> &R {
         &self.value_reader
     }
 
     /// Returns a mutable reference to the inner value reader.
-    pub fn value_reader_mut(&mut self) -> &mut ValueReader<R> {
+    pub fn value_reader_mut(&mut self) -> &mut R {
         &mut self.value_reader
     }
 
@@ -107,8 +100,7 @@ where
     ///
     /// Assumes the streams are positioned at the beginning of the files.
     pub fn read_magic(&mut self) -> io::Result<()> {
-        V::read_magic(self.position_reader.get_mut())
-            .and_then(|_| V::read_magic(self.value_reader.get_mut()))
+        V::read_magic(&mut self.position_reader).and_then(|_| V::read_magic(&mut self.value_reader))
     }
 
     /// Reads a single record.
@@ -143,9 +135,8 @@ where
             }
         } else {
             // Reached end of index, check that readers are at EoF
-            let position_reader_is_done =
-                ReadStatus::check(self.position_reader.get_mut())?.is_done();
-            let value_reader_is_done = ReadStatus::check(self.value_reader.get_mut())?.is_done();
+            let position_reader_is_done = ReadStatus::check(&mut self.position_reader)?.is_done();
+            let value_reader_is_done = ReadStatus::check(&mut self.value_reader)?.is_done();
 
             match (position_reader_is_done, value_reader_is_done) {
                 (true, true) => Ok(ReadStatus::Done),
@@ -192,10 +183,10 @@ where
         let record = &self.index.records()[contig_id];
 
         let position_offset = bgzf::VirtualPosition::from(record.position_offset());
-        self.position_reader.get_mut().seek(position_offset)?;
+        self.position_reader.seek(position_offset)?;
 
         let value_offset = bgzf::VirtualPosition::from(record.value_offset());
-        self.value_reader.get_mut().seek(value_offset)?;
+        self.value_reader.seek(value_offset)?;
 
         Ok(())
     }
@@ -259,12 +250,16 @@ where
         P: AsRef<Path>,
     {
         let index = Index::read_from_path(index_path)?;
-        let position_reader = PositionReader::from_bgzf_path(position_path)?;
-        let value_reader = ValueReader::from_bgzf_path(value_path)?;
+        let position_reader = open_bgzf(position_path)?;
+        let value_reader = open_bgzf(value_path)?;
 
-        Self::new(index, position_reader, value_reader).ok_or_else(|| {
+        let mut new = Self::new(index, position_reader, value_reader).ok_or_else(|| {
             io::Error::new(io::ErrorKind::InvalidData, "SAF index contains no records")
-        })
+        })?;
+
+        new.read_magic()?;
+
+        Ok(new)
     }
 
     /// Creates a new BGZF reader from a shared prefix.
@@ -283,6 +278,16 @@ where
 
         Self::from_bgzf_paths(index_path, position_path, value_path)
     }
+}
+
+/// Creates a new BGZF reader from a path.
+fn open_bgzf<P>(path: P) -> io::Result<bgzf::Reader<io::BufReader<fs::File>>>
+where
+    P: AsRef<Path>,
+{
+    fs::File::open(path)
+        .map(io::BufReader::new)
+        .map(bgzf::Reader::new)
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]

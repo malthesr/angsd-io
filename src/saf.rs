@@ -48,10 +48,7 @@ pub(self) mod tests {
 
     use std::io::{self, Seek};
 
-    use crate::saf::{
-        reader::{BgzfPositionReader, BgzfValueReader},
-        writer::{BgzfPositionWriter, BgzfValueWriter},
-    };
+    use crate::saf::writer::{BgzfPositionWriter, BgzfValueWriter};
 
     pub type MockBgzfReader = BgzfReader<io::Cursor<Vec<u8>>, V3>;
     pub type MockBgzfWriter = BgzfWriter<io::Cursor<Vec<u8>>, io::Cursor<Vec<u8>>, V3>;
@@ -83,11 +80,11 @@ pub(self) mod tests {
             let mut index_reader = index::Reader::<_, V3>::new(index_cursor);
             let index = index_reader.read_index().unwrap();
 
-            let mut position_reader = BgzfPositionReader::from_bgzf(position_cursor);
-            V3::read_magic(position_reader.get_mut()).unwrap();
+            let mut position_reader = bgzf::Reader::new(position_cursor);
+            V3::read_magic(&mut position_reader).unwrap();
 
-            let mut value_reader = BgzfValueReader::from_bgzf(value_cursor);
-            V3::read_magic(value_reader.get_mut()).unwrap();
+            let mut value_reader = bgzf::Reader::new(value_cursor);
+            V3::read_magic(&mut value_reader).unwrap();
 
             Self::new(index, position_reader, value_reader).unwrap()
         }
