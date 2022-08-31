@@ -6,10 +6,10 @@ pub const INDEX_EXT: &str = "saf.idx";
 /// Conventional positions file extension.
 pub const POSITIONS_FILE_EXT: &str = "saf.pos.gz";
 
-/// Conventional values file extension.
-pub const VALUES_FILE_EXT: &str = "saf.gz";
+/// Conventional item file extension.
+pub const ITEM_FILE_EXT: &str = "saf.gz";
 
-const EXTS: [&str; 3] = [INDEX_EXT, POSITIONS_FILE_EXT, VALUES_FILE_EXT];
+const EXTS: [&str; 3] = [INDEX_EXT, POSITIONS_FILE_EXT, ITEM_FILE_EXT];
 
 /// Returns the shared prefix of SAF file member paths given any one of them.
 pub(super) fn prefix_from_member_path(s: &str) -> Option<&str> {
@@ -24,9 +24,9 @@ pub(super) fn member_paths_from_prefix(prefix: &str) -> [String; 3] {
     let create_path = |ext| format!("{prefix}.{ext}");
     let index_path = create_path(INDEX_EXT);
     let position_path = create_path(POSITIONS_FILE_EXT);
-    let value_path = create_path(VALUES_FILE_EXT);
+    let item_path = create_path(ITEM_FILE_EXT);
 
-    [index_path, position_path, value_path]
+    [index_path, position_path, item_path]
 }
 
 #[cfg(test)]
@@ -54,17 +54,17 @@ mod tests {
 
     #[test]
     fn test_member_paths_from_prefix() {
-        let [index_path, position_path, value_path] = member_paths_from_prefix("foo");
+        let [index_path, position_path, item_path] = member_paths_from_prefix("foo");
         assert_eq!(index_path, "foo.saf.idx");
         assert_eq!(position_path, "foo.saf.pos.gz");
-        assert_eq!(value_path, "foo.saf.gz");
+        assert_eq!(item_path, "foo.saf.gz");
     }
 
     #[test]
     fn test_member_paths_from_prefix_with_extra_prefix() {
-        let [index_path, position_path, value_path] = member_paths_from_prefix("foo.bar");
+        let [index_path, position_path, item_path] = member_paths_from_prefix("foo.bar");
         assert_eq!(index_path, "foo.bar.saf.idx");
         assert_eq!(position_path, "foo.bar.saf.pos.gz");
-        assert_eq!(value_path, "foo.bar.saf.gz");
+        assert_eq!(item_path, "foo.bar.saf.gz");
     }
 }

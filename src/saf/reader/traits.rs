@@ -11,8 +11,8 @@ pub trait ReaderExt {
     /// Returns `None` if reader is at end of file.
     fn read_position(&mut self) -> io::Result<Option<u32>>;
 
-    /// Read values.
-    fn read_values(&mut self, buf: &mut [f32]) -> io::Result<ReadStatus>;
+    /// Read likelihoods.
+    fn read_likelihoods(&mut self, buf: &mut [f32]) -> io::Result<ReadStatus>;
 }
 
 impl<R> ReaderExt for R
@@ -48,7 +48,7 @@ where
         }
     }
 
-    fn read_values(&mut self, buf: &mut [f32]) -> io::Result<ReadStatus> {
+    fn read_likelihoods(&mut self, buf: &mut [f32]) -> io::Result<ReadStatus> {
         if ReadStatus::check(self)?.is_done() {
             return Ok(ReadStatus::Done);
         }

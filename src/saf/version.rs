@@ -11,8 +11,8 @@ pub trait Version: Sized {
     /// The SAF version magic number.
     const MAGIC_NUMBER: [u8; MAGIC_LEN];
 
-    /// The contents of the main SAF file for this version.
-    type Contents: ReadableInto<Return = ReadStatus>;
+    /// The items contained in the SAF item file for this version.
+    type Item: ReadableInto<Return = ReadStatus>;
 
     /// Reads the SAF version magic number from a reader.
     fn read_magic<R>(reader: &mut R) -> io::Result<()>
@@ -36,10 +36,10 @@ pub trait Version: Sized {
         }
     }
 
-    /// Reads a single "row" of contents from a reader into a provided buffer.
+    /// Reads a single item from a reader into a provided buffer.
     ///
-    /// The stream is assumed to be positioned immediately before the start of the row.
-    fn read_contents<R>(reader: &mut R, into: &mut Self::Contents) -> io::Result<ReadStatus>
+    /// The stream is assumed to be positioned immediately before the start of the item.
+    fn read_item<R>(reader: &mut R, into: &mut Self::Item) -> io::Result<ReadStatus>
     where
         R: io::BufRead,
     {
@@ -62,5 +62,5 @@ pub struct V3;
 impl Version for V3 {
     const MAGIC_NUMBER: [u8; MAGIC_LEN] = [b's', b'a', b'f', b'v', b'3', 0, 0, 0];
 
-    type Contents = Likelihoods;
+    type Item = Likelihoods;
 }

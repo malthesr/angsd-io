@@ -48,7 +48,7 @@ pub(self) mod tests {
 
     use std::io::{self, Seek};
 
-    use crate::saf::writer::{BgzfPositionWriter, BgzfValueWriter};
+    use crate::saf::writer::{BgzfItemWriter, BgzfPositionWriter};
 
     pub type MockBgzfReader = BgzfReader<io::Cursor<Vec<u8>>, V3>;
     pub type MockBgzfWriter = BgzfWriter<io::Cursor<Vec<u8>>, io::Cursor<Vec<u8>>, V3>;
@@ -61,21 +61,20 @@ pub(self) mod tests {
             let mut position_writer = BgzfPositionWriter::from_bgzf(io::Cursor::new(Vec::new()));
             position_writer.write_magic().unwrap();
 
-            let mut value_writer = BgzfValueWriter::from_bgzf(io::Cursor::new(Vec::new()));
-            value_writer.write_magic().unwrap();
+            let mut item_writer = BgzfItemWriter::from_bgzf(io::Cursor::new(Vec::new()));
+            item_writer.write_magic().unwrap();
 
-            Self::new(index_writer, position_writer, value_writer)
+            Self::new(index_writer, position_writer, item_writer)
         }
     }
 
     impl From<MockBgzfWriter> for MockBgzfReader {
         fn from(writer: MockBgzfWriter) -> Self {
-            let (mut index_cursor, mut position_cursor, mut value_cursor) =
-                writer.finish().unwrap();
+            let (mut index_cursor, mut position_cursor, mut item_cursor) = writer.finish().unwrap();
 
             index_cursor.seek(io::SeekFrom::Start(0)).unwrap();
             position_cursor.seek(io::SeekFrom::Start(0)).unwrap();
-            value_cursor.seek(io::SeekFrom::Start(0)).unwrap();
+            item_cursor.seek(io::SeekFrom::Start(0)).unwrap();
 
             let mut index_reader = index::Reader::<_, V3>::new(index_cursor);
             let index = index_reader.read_index().unwrap();
@@ -83,10 +82,10 @@ pub(self) mod tests {
             let mut position_reader = bgzf::Reader::new(position_cursor);
             V3::read_magic(&mut position_reader).unwrap();
 
-            let mut value_reader = bgzf::Reader::new(value_cursor);
-            V3::read_magic(&mut value_reader).unwrap();
+            let mut item_reader = bgzf::Reader::new(item_cursor);
+            V3::read_magic(&mut item_reader).unwrap();
 
-            Self::new(index, position_reader, value_reader).unwrap()
+            Self::new(index, position_reader, item_reader).unwrap()
         }
     }
 
@@ -165,7 +164,7 @@ pub(self) mod tests {
         let mut i = 0;
         let mut record = reader.create_record_buf();
         while reader.read_record(&mut record)?.is_not_done() {
-            assert_eq!(record.contents()[0], i as f32);
+            assert_eq!(record.item()[0], i as f32);
 
             i += 1;
         }

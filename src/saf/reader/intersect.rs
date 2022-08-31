@@ -98,7 +98,7 @@ where
     /// Note that the number of provided buffers and their contents must match the inner readers
     /// and their contents, respectively. See [`Self::create_record_bufs`] to create an appropriate
     /// collection of buffers based on the reader indices.
-    pub fn read_records(&mut self, bufs: &mut [Record<Id, V::Contents>]) -> io::Result<ReadStatus> {
+    pub fn read_records(&mut self, bufs: &mut [Record<Id, V::Item>]) -> io::Result<ReadStatus> {
         for ((reader, record), id) in self
             .readers
             .iter_mut()
@@ -133,7 +133,7 @@ where
 
     fn read_until_shared_contig(
         &mut self,
-        bufs: &mut [Record<Id, V::Contents>],
+        bufs: &mut [Record<Id, V::Item>],
     ) -> io::Result<ReadStatus> {
         let mut next_idx = 0;
         for (reader, buf) in self.readers.iter_mut().zip(bufs.iter_mut()) {
@@ -167,7 +167,7 @@ where
 
     fn read_until_shared_position_on_contig(
         &mut self,
-        bufs: &mut [Record<Id, V::Contents>],
+        bufs: &mut [Record<Id, V::Item>],
     ) -> io::Result<Option<ReadStatus>> {
         let mut max_pos = bufs
             .iter()

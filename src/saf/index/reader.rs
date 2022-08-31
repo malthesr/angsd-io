@@ -91,9 +91,9 @@ where
         let position_offset = u64::from_le_bytes(offset_buf);
 
         self.inner.read_exact(&mut offset_buf)?;
-        let value_offset = u64::from_le_bytes(offset_buf);
+        let item_offset = u64::from_le_bytes(offset_buf);
 
-        Ok(Record::new(name, sites, position_offset, value_offset))
+        Ok(Record::new(name, sites, position_offset, item_offset))
     }
 
     fn read_magic(&mut self) -> io::Result<()> {

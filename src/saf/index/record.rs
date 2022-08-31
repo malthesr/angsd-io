@@ -8,7 +8,7 @@ pub struct Record<V: Version = V3> {
     name: String,
     sites: usize,
     position_offset: u64,
-    value_offset: u64,
+    item_offset: u64,
     v: PhantomData<V>,
 }
 
@@ -19,6 +19,20 @@ where
     /// Returns the reference sequence name, consuming `self`.
     pub fn into_name(self) -> String {
         self.name
+    }
+
+    /// Returns the item offset.
+    ///
+    /// This is the byte offset into the item file at which the reference sequence data begins.
+    pub fn item_offset(&self) -> u64 {
+        self.item_offset
+    }
+
+    /// Returns a mutable reference to the item offset.
+    ///
+    /// This is the byte offset into the item file at which the reference sequence data begins.
+    pub fn item_offset_mut(&mut self) -> &mut u64 {
+        &mut self.item_offset
     }
 
     /// Returns the reference sequence name.
@@ -32,12 +46,12 @@ where
     }
 
     /// Creates a new record.
-    pub fn new(name: String, sites: usize, position_offset: u64, value_offset: u64) -> Self {
+    pub fn new(name: String, sites: usize, position_offset: u64, item_offset: u64) -> Self {
         Self {
             name,
             sites,
             position_offset,
-            value_offset,
+            item_offset,
             v: PhantomData,
         }
     }
@@ -58,7 +72,7 @@ where
 
     /// Returns the record sites.
     ///
-    /// This is the number of sites on the reference sequence contained in the position and value
+    /// This is the number of sites on the reference sequence contained in the position and item
     /// files.
     pub fn sites(&self) -> usize {
         self.sites
@@ -66,24 +80,10 @@ where
 
     /// Returns a mutable reference to the record sites.
     ///
-    /// This is the number of sites on the reference sequence contained in the position and value
+    /// This is the number of sites on the reference sequence contained in the position and item
     /// files.
     pub fn sites_mut(&mut self) -> &mut usize {
         &mut self.sites
-    }
-
-    /// Returns the value offset.
-    ///
-    /// This is the byte offset into the value file at which the reference sequence data begins.
-    pub fn value_offset(&self) -> u64 {
-        self.value_offset
-    }
-
-    /// Returns a mutable reference to the value offset.
-    ///
-    /// This is the byte offset into the value file at which the reference sequence data begins.
-    pub fn value_offset_mut(&mut self) -> &mut u64 {
-        &mut self.value_offset
     }
 }
 

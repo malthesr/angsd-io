@@ -23,7 +23,7 @@ pub type Likelihoods = Vec<f32>;
 
 /// A SAF likelihood value band.
 ///
-/// The value band describes the start of the band, as well as its length, and contains the
+/// The band describes the start of the band, as well as its length, and contains the
 /// likelihoods within the band. All values outside the band are implicitly zero.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Band {
@@ -62,12 +62,12 @@ impl Band {
         &mut self.start
     }
 
-    /// Returns a reference to the band values.
+    /// Returns a reference to the band likelihoods.
     pub fn likelihoods(&self) -> &[f32] {
         &self.likelihoods
     }
 
-    /// Returns a mutable reference to the band values.
+    /// Returns a mutable reference to the band likelihoods.
     pub fn likelihoods_mut(&mut self) -> &mut Vec<f32> {
         &mut self.likelihoods
     }
@@ -97,7 +97,7 @@ impl ReadableInto for Band {
         buf.likelihoods_mut().resize(len, 0.0);
 
         reader
-            .read_values(buf.likelihoods_mut())
+            .read_likelihoods(buf.likelihoods_mut())
             .map(|_| ReadStatus::NotDone)
     }
 }
@@ -109,20 +109,20 @@ impl ReadableInto for Likelihoods {
     where
         R: io::BufRead,
     {
-        reader.read_values(buf)
+        reader.read_likelihoods(buf)
     }
 }
 
 /// A SAF record.
 ///
-/// The record is parameterised over the contig ID type and its contents. When reading, the contig
-/// ID will be an [`Id`]. When writing, the contig ID will be string-like. The contents can either
-/// a full set of [`Likelihoods`], or only a smaller [`Band`] of likelihoods.
+/// The record is parameterised over the contig ID type and its contained item. When reading, the
+/// ID will be an [`Id`]. When writing, the contig ID will be string-like. The contained item can
+/// either be a full set of [`Likelihoods`], or only a smaller [`Band`] of likelihoods.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Record<I, T> {
     contig_id: I,
     position: u32,
-    contents: T,
+    item: T,
 }
 
 impl<I, T> Record<I, T> {
@@ -136,20 +136,27 @@ impl<I, T> Record<I, T> {
         &mut self.contig_id
     }
 
-    /// Returns the record contents, consuming `self`.
-    pub fn into_contents(self) -> T {
-        self.contents
+    /// Returns the record item, consuming `self`.
+    pub fn into_item(self) -> T {
+        self.item
+    }
+
+    /// Returns a reference to the record item.
+    pub fn item(&self) -> &T {
+        &self.item
+    }
+
+    /// Returns a mutable reference to the record item.
+    pub fn item_mut(&mut self) -> &mut T {
+        &mut self.item
     }
 
     /// Creates a new record.
-    ///
-    /// See also the [`Self::from_alleles`] constructor and the
-    /// [`Writer::create_record_buf`](crate::saf::Reader::create_record_buf) convenience method.
-    pub fn new(contig_id: I, position: u32, contents: T) -> Self {
+    pub fn new(contig_id: I, position: u32, item: T) -> Self {
         Self {
             contig_id,
             position,
-            contents,
+            item,
         }
     }
 
@@ -162,16 +169,6 @@ impl<I, T> Record<I, T> {
     pub fn position_mut(&mut self) -> &mut u32 {
         &mut self.position
     }
-
-    /// Returns a reference to the record contents.
-    pub fn contents(&self) -> &T {
-        &self.contents
-    }
-
-    /// Returns a mutable reference to the record contents.
-    pub fn contents_mut(&mut self) -> &mut T {
-        &mut self.contents
-    }
 }
 
 impl<I> Record<I, Likelihoods> {
@@ -179,14 +176,14 @@ impl<I> Record<I, Likelihoods> {
     ///
     /// This is equal to `2N` for `N` diploid individuals.
     pub fn alleles(&self) -> usize {
-        self.contents.len() - 1
+        self.item.len() - 1
     }
 
-    /// Creates a new record with a fixed number of zero-initialised values.
+    /// Creates a new record with a fixed number of zero-initialised likelihoods.
     pub fn from_alleles(contig_id: I, position: u32, alleles: usize) -> Self {
-        let values = vec![0.0; alleles + 1];
+        let item = vec![0.0; alleles + 1];
 
-        Self::new(contig_id, position, values)
+        Self::new(contig_id, position, item)
     }
 }
 
@@ -202,7 +199,7 @@ impl<T> Record<Id, T> {
     {
         let name = index.records()[self.contig_id].name();
 
-        Record::new(name, self.position, self.contents)
+        Record::new(name, self.position, self.item)
     }
 }
 
@@ -214,9 +211,9 @@ where
         write!(f, "{}", self.contig_id)?;
         write!(f, "{SEP}{}", self.position)?;
 
-        for value in self.contents().iter() {
+        for v in self.item().iter() {
             f.write_str(SEP)?;
-            value.fmt(f)?;
+            v.fmt(f)?;
         }
 
         Ok(())
@@ -240,15 +237,15 @@ impl FromStr for Record<String, Likelihoods> {
             .parse()
             .map_err(ParseRecordError::InvalidPosition)?;
 
-        let contents = iter
+        let item = iter
             .map(|v| v.parse())
             .collect::<Result<Vec<f32>, _>>()
-            .map_err(ParseRecordError::InvalidValues)?;
+            .map_err(ParseRecordError::InvalidLikelihoods)?;
 
-        if !contents.is_empty() {
-            Ok(Self::new(contig_id, position, contents))
+        if !item.is_empty() {
+            Ok(Self::new(contig_id, position, item))
         } else {
-            Err(ParseRecordError::MissingValues)
+            Err(ParseRecordError::MissingLikelihoods)
         }
     }
 }
@@ -263,9 +260,9 @@ pub enum ParseRecordError {
     /// Record position invalid.
     InvalidPosition(num::ParseIntError),
     /// Record values missing.
-    MissingValues,
+    MissingLikelihoods,
     /// Record values invalid.
-    InvalidValues(num::ParseFloatError),
+    InvalidLikelihoods(num::ParseFloatError),
 }
 
 impl fmt::Display for ParseRecordError {
@@ -276,8 +273,10 @@ impl fmt::Display for ParseRecordError {
             ParseRecordError::InvalidPosition(e) => {
                 write!(f, "failed to parse record position: '{e}'")
             }
-            ParseRecordError::MissingValues => f.write_str("missing record values"),
-            ParseRecordError::InvalidValues(e) => write!(f, "failed to parse record value: '{e}'"),
+            ParseRecordError::MissingLikelihoods => f.write_str("missing record likelihoods"),
+            ParseRecordError::InvalidLikelihoods(e) => {
+                write!(f, "failed to parse record likelihoods: '{e}'")
+            }
         }
     }
 }

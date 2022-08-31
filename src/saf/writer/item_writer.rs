@@ -4,18 +4,18 @@ use byteorder::WriteBytesExt;
 
 use crate::saf::{Endian, Version, V3};
 
-/// A BGZF SAF value writer.
+/// A BGZF SAF item writer.
 ///
-/// Note that this is a type alias for a [`ValueWriter`], and most methods are
-/// available via the [`ValueWriter`] type.
-pub type BgzfValueWriter<W> = ValueWriter<bgzf::Writer<W>>;
+/// Note that this is a type alias for a [`ItemWriter`], and most methods are
+/// available via the [`ItemWriter`] type.
+pub type BgzfItemWriter<W> = ItemWriter<bgzf::Writer<W>>;
 
-/// A SAF value writer.
-pub struct ValueWriter<W> {
+/// A SAF item writer.
+pub struct ItemWriter<W> {
     inner: W,
 }
 
-impl<W> ValueWriter<W>
+impl<W> ItemWriter<W>
 where
     W: io::Write,
 {
@@ -39,15 +39,15 @@ where
         Self { inner }
     }
 
-    /// Writes a single value.
-    pub fn write_value(&mut self, value: f32) -> io::Result<()> {
-        self.inner.write_f32::<Endian>(value)
+    /// Writes a single float.
+    fn write_float(&mut self, v: f32) -> io::Result<()> {
+        self.inner.write_f32::<Endian>(v)
     }
 
-    /// Writes multiple values.
-    pub fn write_values(&mut self, values: &[f32]) -> io::Result<()> {
-        for value in values {
-            self.write_value(*value)?
+    /// Writes a single item.
+    pub fn write_item(&mut self, item: &[f32]) -> io::Result<()> {
+        for v in item {
+            self.write_float(*v)?
         }
 
         Ok(())
@@ -59,7 +59,7 @@ where
     }
 }
 
-impl ValueWriter<io::BufWriter<fs::File>> {
+impl ItemWriter<io::BufWriter<fs::File>> {
     /// Creates a new writer from a path.
     ///
     /// If the path already exists, it will be overwritten.
@@ -79,7 +79,7 @@ impl ValueWriter<io::BufWriter<fs::File>> {
     }
 }
 
-impl<W> BgzfValueWriter<W>
+impl<W> BgzfItemWriter<W>
 where
     W: io::Write,
 {
@@ -89,7 +89,7 @@ where
     }
 }
 
-impl BgzfValueWriter<io::BufWriter<fs::File>> {
+impl BgzfItemWriter<io::BufWriter<fs::File>> {
     /// Creates a new BGZF writer from a path.
     ///
     /// If the path already exists, it will be overwritten.
@@ -109,7 +109,7 @@ impl BgzfValueWriter<io::BufWriter<fs::File>> {
     }
 }
 
-impl<W> From<W> for ValueWriter<W>
+impl<W> From<W> for ItemWriter<W>
 where
     W: io::Write,
 {

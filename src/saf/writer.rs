@@ -12,8 +12,8 @@ use super::{
 mod position_writer;
 pub use position_writer::{BgzfPositionWriter, PositionWriter};
 
-mod value_writer;
-pub use value_writer::{BgzfValueWriter, ValueWriter};
+mod item_writer;
+pub use item_writer::{BgzfItemWriter, ItemWriter};
 
 const START_OFFSET: u64 = 8;
 
@@ -27,7 +27,7 @@ pub type BgzfWriter<W1, W2, V> = Writer<W1, bgzf::Writer<W2>, V>;
 pub struct Writer<W1, W2, V: Version = V3> {
     index_writer: index::Writer<W1>,
     position_writer: PositionWriter<W2>,
-    value_writer: ValueWriter<W2>,
+    item_writer: ItemWriter<W2>,
     index_record: Option<index::Record>,
     v: PhantomData<V>,
 }
@@ -48,21 +48,31 @@ where
         &mut self.index_writer
     }
 
-    /// Returns the inner index, position writer, and value writer, consuming `self`.
-    pub fn into_parts(self) -> (index::Writer<W1>, PositionWriter<W2>, ValueWriter<W2>) {
-        (self.index_writer, self.position_writer, self.value_writer)
+    /// Returns the inner index, position writer, and item writer, consuming `self`.
+    pub fn into_parts(self) -> (index::Writer<W1>, PositionWriter<W2>, ItemWriter<W2>) {
+        (self.index_writer, self.position_writer, self.item_writer)
+    }
+
+    /// Returns the inner item writer.
+    pub fn item_writer(&self) -> &ItemWriter<W2> {
+        &self.item_writer
+    }
+
+    /// Returns a mutable reference to the inner item writer.
+    pub fn item_writer_mut(&mut self) -> &mut ItemWriter<W2> {
+        &mut self.item_writer
     }
 
     /// Creates a new writer.
     pub fn new(
         index_writer: index::Writer<W1>,
         position_writer: PositionWriter<W2>,
-        value_writer: ValueWriter<W2>,
+        item_writer: ItemWriter<W2>,
     ) -> Self {
         Self {
             index_writer,
             position_writer,
-            value_writer,
+            item_writer,
             index_record: None,
             v: PhantomData,
         }
@@ -78,21 +88,11 @@ where
         &mut self.position_writer
     }
 
-    /// Returns the inner value writer.
-    pub fn value_writer(&self) -> &ValueWriter<W2> {
-        &self.value_writer
-    }
-
-    /// Returns a mutable reference to the inner value writer.
-    pub fn value_writer_mut(&mut self) -> &mut ValueWriter<W2> {
-        &mut self.value_writer
-    }
-
     /// Writes the magic numbers.
     pub fn write_magic(&mut self) -> io::Result<()> {
         self.position_writer
             .write_magic()
-            .and_then(|_| self.value_writer.write_magic())
+            .and_then(|_| self.item_writer.write_magic())
     }
 }
 
@@ -120,11 +120,11 @@ where
             if index_record.name() != contig_id {
                 // Case (1a)
                 let position_offset = u64::from(self.position_writer.get_ref().virtual_position());
-                let value_offset = u64::from(self.value_writer.get_ref().virtual_position());
+                let item_offset = u64::from(self.item_writer.get_ref().virtual_position());
 
                 let old = mem::replace(
                     index_record,
-                    index::Record::new(contig_id.to_string(), 1, position_offset, value_offset),
+                    index::Record::new(contig_id.to_string(), 1, position_offset, item_offset),
                 );
 
                 self.index_writer.write_record(&old)?;
@@ -146,7 +146,7 @@ where
 
         // Write record
         self.position_writer.write_position(record.position())?;
-        self.value_writer.write_values(record.contents())?;
+        self.item_writer.write_item(record.item())?;
 
         Ok(())
     }
@@ -160,7 +160,7 @@ where
         Ok((
             self.index_writer.into_inner(),
             self.position_writer.into_inner().finish()?,
-            self.value_writer.into_inner().finish()?,
+            self.item_writer.into_inner().finish()?,
         ))
     }
 }
@@ -202,20 +202,20 @@ where
     /// If the paths already exists, they will be overwritten.
     ///
     /// The magic number will be written to the paths.
-    pub fn from_bgzf_paths<P>(index_path: P, position_path: P, value_path: P) -> io::Result<Self>
+    pub fn from_bgzf_paths<P>(index_path: P, position_path: P, item_path: P) -> io::Result<Self>
     where
         P: AsRef<Path>,
     {
         let index_writer = index::Writer::from_path(index_path)?;
         let position_writer = PositionWriter::from_bgzf_path(position_path)?;
-        let value_writer = ValueWriter::from_bgzf_path(value_path)?;
+        let item_writer = ItemWriter::from_bgzf_path(item_path)?;
 
-        Ok(Self::new(index_writer, position_writer, value_writer))
+        Ok(Self::new(index_writer, position_writer, item_writer))
     }
 
     /// Creates a new BGZF writer from a shared prefix.
     ///
-    /// Conventionally, the SAF index, positions, and value files are named according to a shared
+    /// Conventionally, the SAF index, positions, and item files are named according to a shared
     /// prefix and specific extensions for each file. See [`crate::saf::ext`] for these extensions.
     /// This method opens files for writing in accordance with these conventions.
     ///
@@ -226,9 +226,9 @@ where
     where
         P: AsRef<Path>,
     {
-        let [index_path, position_path, value_path] =
+        let [index_path, position_path, item_path] =
             member_paths_from_prefix(&prefix.as_ref().to_string_lossy());
 
-        Self::from_bgzf_paths(index_path, position_path, value_path)
+        Self::from_bgzf_paths(index_path, position_path, item_path)
     }
 }

@@ -72,7 +72,7 @@ where
         writer.write_all(name)?;
         writer.write_all(&record.sites().to_le_bytes())?;
         writer.write_all(&record.position_offset().to_le_bytes())?;
-        writer.write_all(&record.value_offset().to_le_bytes())?;
+        writer.write_all(&record.item_offset().to_le_bytes())?;
 
         Ok(())
     }

@@ -27,7 +27,7 @@ pub type BgzfReader<R, V> = Reader<bgzf::Reader<R>, V>;
 pub struct Reader<R, V> {
     index: Index,
     position_reader: R,
-    value_reader: R,
+    item_reader: R,
     position: ReaderPosition,
     v: PhantomData<V>,
 }
@@ -55,9 +55,19 @@ where
         &mut self.index
     }
 
-    /// Returns the inner index, position reader, and value reader, consuming `self`.
+    /// Returns the inner index, position reader, and item reader, consuming `self`.
     pub fn into_parts(self) -> (Index, R, R) {
-        (self.index, self.position_reader, self.value_reader)
+        (self.index, self.position_reader, self.item_reader)
+    }
+
+    /// Returns the inner item reader.
+    pub fn item_reader(&self) -> &R {
+        &self.item_reader
+    }
+
+    /// Returns a mutable reference to the inner item reader.
+    pub fn item_reader_mut(&mut self) -> &mut R {
+        &mut self.item_reader
     }
 
     /// Creates a new reader.
@@ -65,13 +75,13 @@ where
     /// # Returns
     ///
     /// `None` if `index` contains no records.
-    pub fn new(index: Index, position_reader: R, value_reader: R) -> Option<Self> {
+    pub fn new(index: Index, position_reader: R, item_reader: R) -> Option<Self> {
         let position = ReaderPosition::setup(&index)?;
 
         Some(Self {
             index,
             position_reader,
-            value_reader,
+            item_reader,
             position,
             v: PhantomData,
         })
@@ -87,30 +97,20 @@ where
         &mut self.position_reader
     }
 
-    /// Returns the inner value reader.
-    pub fn value_reader(&self) -> &R {
-        &self.value_reader
-    }
-
-    /// Returns a mutable reference to the inner value reader.
-    pub fn value_reader_mut(&mut self) -> &mut R {
-        &mut self.value_reader
-    }
-
     /// Reads and checks the magic numbers.
     ///
     /// Assumes the streams are positioned at the beginning of the files.
     pub fn read_magic(&mut self) -> io::Result<()> {
-        V::read_magic(&mut self.position_reader).and_then(|_| V::read_magic(&mut self.value_reader))
+        V::read_magic(&mut self.position_reader).and_then(|_| V::read_magic(&mut self.item_reader))
     }
 
     /// Reads a single record.
-    pub fn read_record(&mut self, record: &mut Record<Id, V::Contents>) -> io::Result<ReadStatus> {
+    pub fn read_record(&mut self, record: &mut Record<Id, V::Item>) -> io::Result<ReadStatus> {
         if !self.position.contig_is_finished() || self.position.next_contig(&self.index).is_some() {
             // Index still contains data, read and check that readers are not at EoF
             match (
                 self.position_reader.read_position()?,
-                V::read_contents(&mut self.value_reader, record.contents_mut())?,
+                V::read_item(&mut self.item_reader, record.item_mut())?,
             ) {
                 (Some(pos), ReadStatus::NotDone) => {
                     *record.contig_id_mut() = self.position.contig_id();
@@ -121,10 +121,10 @@ where
                     Ok(ReadStatus::NotDone)
                 }
                 (Some(_), ReadStatus::Done) => Err(eof_err(
-                    "reached EoF in SAF position file before reaching EoF in SAF value file",
+                    "reached EoF in SAF position file before reaching EoF in SAF item file",
                 )),
                 (None, ReadStatus::NotDone) => Err(eof_err(
-                    "reached EoF in SAF value file before reaching EoF in SAF position file",
+                    "reached EoF in SAF item file before reaching EoF in SAF position file",
                 )),
                 (None, ReadStatus::Done) => Err(eof_err(
                     "reached EoF in both SAF files before reaching end of index",
@@ -133,15 +133,15 @@ where
         } else {
             // Reached end of index, check that readers are at EoF
             let position_reader_is_done = ReadStatus::check(&mut self.position_reader)?.is_done();
-            let value_reader_is_done = ReadStatus::check(&mut self.value_reader)?.is_done();
+            let item_reader_is_done = ReadStatus::check(&mut self.item_reader)?.is_done();
 
-            match (position_reader_is_done, value_reader_is_done) {
+            match (position_reader_is_done, item_reader_is_done) {
                 (true, true) => Ok(ReadStatus::Done),
                 (true, false) => Err(data_err(
                     "reached end of index before reaching EoF in SAF position file",
                 )),
                 (false, true) => Err(data_err(
-                    "reached end of index before reaching EoF in SAF value file",
+                    "reached end of index before reaching EoF in SAF item file",
                 )),
                 (false, false) => Err(data_err(
                     "reached end of index before reaching EoF in both SAF files",
@@ -182,8 +182,8 @@ where
         let position_offset = bgzf::VirtualPosition::from(record.position_offset());
         self.position_reader.seek(position_offset)?;
 
-        let value_offset = bgzf::VirtualPosition::from(record.value_offset());
-        self.value_reader.seek(value_offset)?;
+        let item_offset = bgzf::VirtualPosition::from(record.item_offset());
+        self.item_reader.seek(item_offset)?;
 
         Ok(())
     }
@@ -242,15 +242,15 @@ where
     /// Creates a new BGZF reader from paths.
     ///
     /// The stream will be positioned immediately after the magic number.
-    pub fn from_bgzf_paths<P>(index_path: P, position_path: P, value_path: P) -> io::Result<Self>
+    pub fn from_bgzf_paths<P>(index_path: P, position_path: P, item_path: P) -> io::Result<Self>
     where
         P: AsRef<Path>,
     {
         let index = Index::read_from_path(index_path)?;
         let position_reader = open_bgzf(position_path)?;
-        let value_reader = open_bgzf(value_path)?;
+        let item_reader = open_bgzf(item_path)?;
 
-        let mut new = Self::new(index, position_reader, value_reader).ok_or_else(|| {
+        let mut new = Self::new(index, position_reader, item_reader).ok_or_else(|| {
             io::Error::new(io::ErrorKind::InvalidData, "SAF index contains no records")
         })?;
 
@@ -261,7 +261,7 @@ where
 
     /// Creates a new BGZF reader from a shared prefix.
     ///
-    /// Conventionally, the SAF index, positions, and value files are named according to a shared
+    /// Conventionally, the SAF index, positions, and item files are named according to a shared
     /// prefix and specific extensions for each file. See [`crate::saf::ext`] for these extensions.
     /// Where this convention is observed, this method opens a reader from the shared prefix.
     ///
@@ -270,10 +270,10 @@ where
     where
         P: AsRef<Path>,
     {
-        let [index_path, position_path, value_path] =
+        let [index_path, position_path, item_path] =
             member_paths_from_prefix(&prefix.as_ref().to_string_lossy());
 
-        Self::from_bgzf_paths(index_path, position_path, value_path)
+        Self::from_bgzf_paths(index_path, position_path, item_path)
     }
 }
 
