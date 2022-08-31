@@ -2,7 +2,10 @@ use std::io;
 
 use crate::ReadStatus;
 
-use super::{reader::ReadableInto, record::Likelihoods};
+use super::{
+    reader::ReadableInto,
+    record::{Band, Likelihoods},
+};
 
 const MAGIC_LEN: usize = 8;
 
@@ -63,4 +66,14 @@ impl Version for V3 {
     const MAGIC_NUMBER: [u8; MAGIC_LEN] = [b's', b'a', b'f', b'v', b'3', 0, 0, 0];
 
     type Item = Likelihoods;
+}
+
+/// A marker type for the SAF version 3.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct V4;
+
+impl Version for V4 {
+    const MAGIC_NUMBER: [u8; MAGIC_LEN] = [b's', b'a', b'f', b'v', b'3', 0, 0, 0];
+
+    type Item = Band;
 }

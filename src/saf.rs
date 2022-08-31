@@ -35,7 +35,7 @@ pub mod record;
 pub use record::Record;
 
 mod version;
-pub use version::{Version, V3};
+pub use version::{Version, V3, V4};
 
 pub mod writer;
 pub use writer::{BgzfWriter, Writer};
