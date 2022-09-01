@@ -1,18 +1,16 @@
 //! Writing of the SAF format.
 
-use std::{fs, io, mem, path::Path};
+use std::{fs, io, path::Path};
 
 use super::{
     ext::{member_paths_from_prefix, prefix_from_member_path},
-    index::{self, IndexWriterExt},
-    record::{Likelihoods, Record},
-    Version, V3,
+    index,
+    record::Record,
+    Version,
 };
 
 mod traits;
 pub(crate) use traits::WriterExt;
-
-const START_OFFSET: u64 = 8;
 
 /// A BGZF SAF writer.
 ///
@@ -21,11 +19,11 @@ const START_OFFSET: u64 = 8;
 pub type BgzfWriter<W1, W2, V> = Writer<W1, bgzf::Writer<W2>, V>;
 
 /// A SAF writer.
-pub struct Writer<W1, W2, V: Version = V3> {
-    index_writer: W1,
-    position_writer: W2,
-    item_writer: W2,
-    index_record: Option<index::Record<V>>,
+pub struct Writer<W1, W2, V> {
+    pub(super) index_writer: W1,
+    pub(super) position_writer: W2,
+    pub(super) item_writer: W2,
+    pub(super) index_record: Option<index::Record<V>>,
 }
 
 impl<W1, W2, V> Writer<W1, W2, V>
@@ -87,58 +85,18 @@ where
     }
 }
 
-impl<W1, W2> BgzfWriter<W1, W2, V3>
+impl<W1, W2, V> BgzfWriter<W1, W2, V>
 where
     W1: io::Write,
     W2: io::Write,
+    V: Version,
 {
     /// Writes a single record.
-    pub fn write_record<I>(&mut self, record: &Record<I, Likelihoods>) -> io::Result<()>
+    pub fn write_record<I>(&mut self, record: &Record<I, V::Item>) -> io::Result<()>
     where
         I: AsRef<str>,
     {
-        let contig_id = record.contig_id().as_ref();
-
-        // Handle index according to three cases:
-        //
-        // (1) New record is not the first, and...
-        //     (1a) it is on a new contig: write the current index record and setup next
-        //     (1b) is on the old contig: increment the count of sites on contig
-        // (2) New record is the first: write alleles to index, and set up first index record
-        if let Some(index_record) = self.index_record.as_mut() {
-            // Case (1)
-            if index_record.name() != contig_id {
-                // Case (1a)
-                let position_offset = u64::from(self.position_writer.virtual_position());
-                let item_offset = u64::from(self.item_writer.virtual_position());
-
-                let old = mem::replace(
-                    index_record,
-                    index::Record::new(contig_id.to_string(), 1, position_offset, item_offset),
-                );
-
-                old.write(&mut self.index_writer)?;
-            } else {
-                // Case (1b)
-                *index_record.sites_mut() += 1;
-            }
-        } else {
-            // Case (2)
-            self.index_writer.write_alleles(record.alleles())?;
-
-            self.index_record = Some(index::Record::new(
-                contig_id.to_string(),
-                1,
-                START_OFFSET,
-                START_OFFSET,
-            ));
-        }
-
-        // Write record
-        self.position_writer.write_position(record.position())?;
-        self.item_writer.write_likelihoods(record.item())?;
-
-        Ok(())
+        V::write_record(self, record)
     }
 
     /// Finishes writing.

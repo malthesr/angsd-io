@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, mem};
 
 use byteorder::{ReadBytesExt, LE};
 
@@ -6,13 +6,17 @@ use crate::ReadStatus;
 
 use super::{
     index::{self, Index, IndexReaderExt, IndexWriterExt},
-    reader::ReaderExt,
+    reader::{Reader, ReaderExt},
     record::{Band, Id, Likelihoods, Record},
+    writer::{BgzfWriter, WriterExt},
 };
 
 const MAGIC_LEN: usize = 8;
 
 /// A type that describes a SAF file version.
+///
+/// Users should not generally need to use methods defined by this trait directly. Rather, these
+/// methods are used by struct generic over methods instead.
 ///
 /// Note that the SAF versioning is ambiguous: the versions described in the magic numbers are
 /// out of sync with those used internally in ANGSD. The usage here follows the magic numbers.
@@ -45,10 +49,41 @@ pub trait Version: Sized {
     where
         R: io::BufRead;
 
-    /// Writes the SAF index record for this version to a reader.
+    /// Reads a single record from a SAF reader into a provided buffer.
+    ///
+    /// The stream is assumed to be positioned immediately before the start of the record.
+    ///
+    /// Note that the record buffer needs to be correctly set up. Use [`Self::create_record_buf`]
+    /// for a correctly initialised record buffer to use for reading.
+    fn read_record<R>(
+        reader: &mut Reader<R, Self>,
+        buf: &mut Record<Id, Self::Item>,
+    ) -> io::Result<ReadStatus>
+    where
+        R: io::BufRead,
+    {
+        Reader::read_record(reader, buf)
+    }
+
+    /// Writes the SAF index record for to a reader.
     fn write_index_record<W>(writer: &mut W, record: &index::Record<Self>) -> io::Result<()>
     where
         W: io::Write;
+
+    /// Writes a single item to a writer.
+    fn write_item<W>(writer: &mut W, item: &Self::Item) -> io::Result<()>
+    where
+        W: io::Write;
+
+    /// Writes a single record to a writer.
+    fn write_record<W1, W2, I>(
+        writer: &mut BgzfWriter<W1, W2, Self>,
+        record: &Record<I, Self::Item>,
+    ) -> io::Result<()>
+    where
+        W1: io::Write,
+        W2: io::Write,
+        I: AsRef<str>;
 
     /// Reads the SAF version magic number from a reader.
     fn read_magic<R>(reader: &mut R) -> io::Result<()>
@@ -135,6 +170,63 @@ impl Version for V3 {
         writer.write_position_offset(record.position_offset())?;
         writer.write_item_offset(record.item_offset())
     }
+
+    fn write_item<W>(writer: &mut W, item: &Self::Item) -> io::Result<()>
+    where
+        W: io::Write,
+    {
+        writer.write_likelihoods(item)
+    }
+
+    fn write_record<W1, W2, I>(
+        writer: &mut BgzfWriter<W1, W2, Self>,
+        record: &Record<I, Self::Item>,
+    ) -> io::Result<()>
+    where
+        W1: io::Write,
+        W2: io::Write,
+        I: AsRef<str>,
+    {
+        let contig_id = record.contig_id().as_ref();
+
+        // Handle index according to three cases:
+        //
+        // (1) New record is not the first, and...
+        //     (1a) it is on a new contig: write the current index record and setup next
+        //     (1b) is on the old contig: increment the count of sites on contig
+        // (2) New record is the first: write alleles to index, and set up first index record
+        if let Some(index_record) = writer.index_record.as_mut() {
+            // Case (1)
+            if index_record.name() != contig_id {
+                // Case (1a)
+                let position_offset = u64::from(writer.position_writer.virtual_position());
+                let item_offset = u64::from(writer.item_writer.virtual_position());
+
+                let old = mem::replace(
+                    index_record,
+                    index::Record::new(contig_id.to_string(), 1, position_offset, item_offset),
+                );
+
+                old.write(&mut writer.index_writer)?;
+            } else {
+                // Case (1b)
+                *index_record.sites_mut() += 1;
+            }
+        } else {
+            // Case (2)
+            writer.index_writer.write_alleles(record.alleles())?;
+
+            let offset = Self::MAGIC_NUMBER.len() as u64;
+            writer.index_record =
+                Some(index::Record::new(contig_id.to_string(), 1, offset, offset));
+        }
+
+        // Write record
+        writer.position_writer.write_position(record.position())?;
+        Self::write_item(&mut writer.item_writer, record.item())?;
+
+        Ok(())
+    }
 }
 
 /// A marker type for the SAF version 4.
@@ -211,5 +303,24 @@ impl Version for V4 {
         writer.write_sum_band(record.sum_band())?;
         writer.write_position_offset(record.position_offset())?;
         writer.write_item_offset(record.item_offset())
+    }
+
+    fn write_item<W>(writer: &mut W, item: &Self::Item) -> io::Result<()>
+    where
+        W: io::Write,
+    {
+        todo!()
+    }
+
+    fn write_record<W1, W2, I>(
+        writer: &mut BgzfWriter<W1, W2, Self>,
+        record: &Record<I, Self::Item>,
+    ) -> io::Result<()>
+    where
+        W1: io::Write,
+        W2: io::Write,
+        I: AsRef<str>,
+    {
+        todo!()
     }
 }
