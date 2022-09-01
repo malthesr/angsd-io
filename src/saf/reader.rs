@@ -1,14 +1,14 @@
 //! Reading of the SAF format.
 
-use std::{fs, io, marker::PhantomData, path::Path};
+use std::{fs, io, path::Path};
 
 use crate::ReadStatus;
 
 use super::{
     ext::{member_paths_from_prefix, prefix_from_member_path},
     index::Index,
-    record::{Id, Likelihoods, Record},
-    Version,
+    record::{Id, Record},
+    Version, V3, V4,
 };
 
 mod intersect;
@@ -23,13 +23,23 @@ pub use traits::ReaderExt;
 /// available via the [`Reader`] type.
 pub type BgzfReader<R, V> = Reader<bgzf::Reader<R>, V>;
 
+/// A BGZF SAF reader for the [`V3`] format.
+pub type BgzfReaderV3<R> = BgzfReader<R, V3>;
+
+/// A BGZF SAF reader for the [`V4`] format.
+pub type BgzfReaderV4<R> = BgzfReader<R, V4>;
+
 /// A SAF reader.
+///
+/// The reader is generic over the inner reader type and over the SAF [`Version`] being read.
+/// In most cases, the inner readers should be BGZF readers: therefore, the alias [`BgzfReader`]
+/// with its provided methods should typically be preferred. Version-specific aliases
+/// [`BgzfReaderV3`] and [`BgzfReaderV4`] are also provided for convenience.
 pub struct Reader<R, V> {
     index: Index<V>,
     position_reader: R,
     item_reader: R,
     position: ReaderPosition,
-    v: PhantomData<V>,
 }
 
 impl<R, V> Reader<R, V>
@@ -38,11 +48,8 @@ where
     V: Version,
 {
     /// Returns a new record suitable for use in reading.
-    ///
-    /// The [`Self::read_record`] method requires an input record buffer with the correct number of
-    /// alleles. This method creates such a record, using the number of alleles defined in the index.
-    pub fn create_record_buf(&self) -> Record<Id, Likelihoods> {
-        Record::from_alleles(0, 1, self.index.alleles())
+    pub fn create_record_buf(&self) -> Record<Id, V::Item> {
+        V::create_record_buf(&self.index)
     }
 
     /// Returns the index.
@@ -83,7 +90,6 @@ where
             position_reader,
             item_reader,
             position,
-            v: PhantomData,
         })
     }
 
@@ -115,6 +121,9 @@ where
     }
 
     /// Reads a single record.
+    ///
+    /// Note that the record buffer needs to be correctly set up. Use [`Self::create_record_buf`]
+    /// for a correctly initialised record buffer to use for reading.
     pub fn read_record(&mut self, record: &mut Record<Id, V::Item>) -> io::Result<ReadStatus> {
         if !self.position.contig_is_finished() || self.position.next_contig(&self.index).is_some() {
             // Index still contains data, read and check that readers are not at EoF

@@ -4,7 +4,7 @@ use indexmap::IndexMap;
 
 use crate::{
     saf::{
-        record::{Id, Likelihoods, Record},
+        record::{Id, Record},
         Version, V3,
     },
     ReadStatus,
@@ -31,7 +31,7 @@ where
     /// The [`Self::read_records`] method requires a collection of record buffers of the correct
     /// length and with the correct number of alleles. This method creates such a record collection,
     /// using the number of alleles defined in the indexes.
-    pub fn create_record_bufs(&self) -> Vec<Record<Id, Likelihoods>> {
+    pub fn create_record_bufs(&self) -> Vec<Record<Id, V::Item>> {
         self.readers
             .iter()
             .map(|reader| reader.create_record_buf())

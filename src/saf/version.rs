@@ -5,9 +5,9 @@ use byteorder::{ReadBytesExt, LE};
 use crate::ReadStatus;
 
 use super::{
-    index::{self, IndexReaderExt, IndexWriterExt},
+    index::{self, Index, IndexReaderExt, IndexWriterExt},
     reader::ReaderExt,
-    record::{Band, Likelihoods},
+    record::{Band, Id, Likelihoods, Record},
 };
 
 const MAGIC_LEN: usize = 8;
@@ -22,6 +22,9 @@ pub trait Version: Sized {
 
     /// The items contained in the SAF item file for this version.
     type Item;
+
+    /// Creates a SAF record buffer suitable for reading from a reader for this version.
+    fn create_record_buf(index: &Index<Self>) -> Record<Id, Self::Item>;
 
     /// Reads the SAF index record for this version from a reader.
     fn read_index_record<R>(reader: &mut R) -> io::Result<index::Record<Self>>
@@ -82,6 +85,11 @@ impl Version for V3 {
 
     type Item = Likelihoods;
 
+    fn create_record_buf(index: &Index<Self>) -> Record<Id, Self::Item> {
+        // Record likelihoods must be set up to be correct size from beginning
+        Record::from_alleles(0, 1, index.alleles())
+    }
+
     fn read_index_record<R>(reader: &mut R) -> io::Result<index::Record<Self>>
     where
         R: io::BufRead,
@@ -127,6 +135,11 @@ impl Version for V4 {
     const MAGIC_NUMBER: [u8; MAGIC_LEN] = [b's', b'a', b'f', b'v', b'3', 0, 0, 0];
 
     type Item = Band;
+
+    fn create_record_buf(_index: &Index<Self>) -> Record<Id, Self::Item> {
+        // Band is resized during reading, so we can simplify initialise empty band
+        Record::new(0, 1, Band::new(0, Vec::new()))
+    }
 
     fn read_index_record<R>(reader: &mut R) -> io::Result<index::Record<Self>>
     where
