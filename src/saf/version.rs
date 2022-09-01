@@ -13,6 +13,13 @@ use super::{
 const MAGIC_LEN: usize = 8;
 
 /// A type that describes a SAF file version.
+///
+/// Note that the SAF versioning is ambiguous: the versions described in the magic numbers are
+/// out of sync with those used internally in ANGSD. The usage here follows the magic numbers.
+/// Hence, what is here referred to as [`V3`] corresponds to files with magic numbers `safv3`,
+/// which is also sometimes referred to as "Version 1" in ANGSD. Likewise, what is here referred to
+/// as [`V4`] corresponds to files with magic numbers `safv4`, also sometimes known as "Version 2"
+/// in ANGSD.
 pub trait Version: Sized {
     /// The numeric description of the SAF version.
     const VERSION: u8;
@@ -75,6 +82,11 @@ pub trait Version: Sized {
 }
 
 /// A marker type for the SAF version 3.
+///
+/// In this version, the SAF item file contains the full set of likelihoods for each sample
+/// frequency.
+///
+/// See also [`Version`] for a note on naming of versions.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct V3;
 
@@ -125,7 +137,12 @@ impl Version for V3 {
     }
 }
 
-/// A marker type for the SAF version 3.
+/// A marker type for the SAF version 4.
+///
+/// In this version, the SAF item file contains only a smaller "band" of likelihoods centered around
+/// the most likely sample frequency, along with information about the location of the band.
+///
+/// See also [`Version`] for a note on naming of versions.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct V4;
 
