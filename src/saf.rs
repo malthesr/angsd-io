@@ -38,7 +38,7 @@ mod version;
 pub use version::{Version, V3, V4};
 
 pub mod writer;
-pub use writer::{BgzfWriter, Writer};
+pub use writer::{Writer, WriterV3, WriterV4};
 
 #[cfg(test)]
 pub(self) mod tests {
@@ -47,13 +47,13 @@ pub(self) mod tests {
     use std::io::{self, Seek};
 
     pub type MockReader = Reader<io::Cursor<Vec<u8>>, V3>;
-    pub type MockBgzfWriter = BgzfWriter<io::Cursor<Vec<u8>>, io::Cursor<Vec<u8>>, V3>;
+    pub type MockWriter = Writer<io::Cursor<Vec<u8>>, V3>;
 
-    impl MockBgzfWriter {
+    impl MockWriter {
         pub fn create() -> Self {
             let index_writer = io::Cursor::new(Vec::new());
-            let position_writer = bgzf::Writer::new(io::Cursor::new(Vec::new()));
-            let item_writer = bgzf::Writer::new(io::Cursor::new(Vec::new()));
+            let position_writer = io::Cursor::new(Vec::new());
+            let item_writer = io::Cursor::new(Vec::new());
 
             let mut new = Self::new(index_writer, position_writer, item_writer);
             new.write_magic().unwrap();
@@ -61,8 +61,8 @@ pub(self) mod tests {
         }
     }
 
-    impl From<MockBgzfWriter> for MockReader {
-        fn from(writer: MockBgzfWriter) -> Self {
+    impl From<MockWriter> for MockReader {
+        fn from(writer: MockWriter) -> Self {
             let (mut index_reader, mut position_reader, mut item_reader) = writer.finish().unwrap();
 
             index_reader.seek(io::SeekFrom::Start(0)).unwrap();
@@ -79,7 +79,7 @@ pub(self) mod tests {
 
     macro_rules! reader {
         ($records:expr) => {{
-            let mut writer = MockBgzfWriter::create();
+            let mut writer = MockWriter::create();
 
             for record in $records.iter() {
                 writer.write_record(record).unwrap();

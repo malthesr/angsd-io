@@ -8,7 +8,7 @@ use super::{
     index::{self, Index, IndexReaderExt, IndexWriterExt},
     reader::{Reader, ReaderExt},
     record::{Band, Id, Likelihoods, Record},
-    writer::{BgzfWriter, WriterExt},
+    writer::{Writer, WriterExt},
 };
 
 const MAGIC_LEN: usize = 8;
@@ -76,13 +76,12 @@ pub trait Version: Sized {
         W: io::Write;
 
     /// Writes a single record to a writer.
-    fn write_record<W1, W2, I>(
-        writer: &mut BgzfWriter<W1, W2, Self>,
+    fn write_record<W, I>(
+        writer: &mut Writer<W, Self>,
         record: &Record<I, Self::Item>,
     ) -> io::Result<()>
     where
-        W1: io::Write,
-        W2: io::Write,
+        W: io::Write,
         I: AsRef<str>;
 
     /// Reads the SAF version magic number from a reader.
@@ -178,13 +177,12 @@ impl Version for V3 {
         writer.write_likelihoods(item)
     }
 
-    fn write_record<W1, W2, I>(
-        writer: &mut BgzfWriter<W1, W2, Self>,
+    fn write_record<W, I>(
+        writer: &mut Writer<W, Self>,
         record: &Record<I, Self::Item>,
     ) -> io::Result<()>
     where
-        W1: io::Write,
-        W2: io::Write,
+        W: io::Write,
         I: AsRef<str>,
     {
         let contig_id = record.contig_id().as_ref();
@@ -312,13 +310,12 @@ impl Version for V4 {
         todo!()
     }
 
-    fn write_record<W1, W2, I>(
-        writer: &mut BgzfWriter<W1, W2, Self>,
+    fn write_record<W, I>(
+        writer: &mut Writer<W, Self>,
         record: &Record<I, Self::Item>,
     ) -> io::Result<()>
     where
-        W1: io::Write,
-        W2: io::Write,
+        W: io::Write,
         I: AsRef<str>,
     {
         todo!()

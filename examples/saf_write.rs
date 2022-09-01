@@ -9,7 +9,7 @@ use angsd_io::saf;
 
 fn main() -> io::Result<()> {
     let path = env::args().nth(1).expect("missing path to SAF member file");
-    let mut writer = saf::BgzfWriter::<_, _, saf::V3>::from_bgzf_member_path(path)?;
+    let mut writer = saf::WriterV3::from_member_path(path)?;
 
     let stdin = io::stdin();
     let mut reader = stdin.lock();

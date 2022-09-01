@@ -6,101 +6,39 @@ use super::{
     ext::{member_paths_from_prefix, prefix_from_member_path},
     index,
     record::Record,
-    Version,
+    Version, V3, V4,
 };
 
 mod traits;
 pub(crate) use traits::WriterExt;
 
-/// A BGZF SAF writer.
-///
-/// Note that this is a type alias for a [`Writer`], and most methods are
-/// available via the [`Writer`] type.
-pub type BgzfWriter<W1, W2, V> = Writer<W1, bgzf::Writer<W2>, V>;
+/// A SAF writer for the [`V3`] format.
+pub type WriterV3<R> = Writer<R, V3>;
+
+/// A SAF writer for the [`V4`] format.
+pub type WriterV4<R> = Writer<R, V4>;
 
 /// A SAF writer.
-pub struct Writer<W1, W2, V> {
-    pub(super) index_writer: W1,
-    pub(super) position_writer: W2,
-    pub(super) item_writer: W2,
+///
+/// The writer is generic over the inner writer type and over the SAF [`Version`] being read.
+/// Version-specific aliases [`WriterV3`] and [`WriterV4`] are provided for convenience.
+pub struct Writer<W, V>
+where
+    W: io::Write,
+{
+    pub(super) index_writer: W,
+    pub(super) position_writer: bgzf::Writer<W>,
+    pub(super) item_writer: bgzf::Writer<W>,
     pub(super) index_record: Option<index::Record<V>>,
 }
 
-impl<W1, W2, V> Writer<W1, W2, V>
+impl<W, V> Writer<W, V>
 where
-    W1: io::Write,
-    W2: io::Write,
+    W: io::Write,
     V: Version,
 {
-    /// Returns the index writer.
-    pub fn index_writer(&self) -> &W1 {
-        &self.index_writer
-    }
-
-    /// Returns a mutable reference to the index.
-    pub fn index_writer_mut(&mut self) -> &mut W1 {
-        &mut self.index_writer
-    }
-
-    /// Returns the inner index, position writer, and item writer, consuming `self`.
-    pub fn into_parts(self) -> (W1, W2, W2) {
-        (self.index_writer, self.position_writer, self.item_writer)
-    }
-
-    /// Returns the inner item writer.
-    pub fn item_writer(&self) -> &W2 {
-        &self.item_writer
-    }
-
-    /// Returns a mutable reference to the inner item writer.
-    pub fn item_writer_mut(&mut self) -> &mut W2 {
-        &mut self.item_writer
-    }
-
-    /// Creates a new writer.
-    pub fn new(index_writer: W1, position_writer: W2, item_writer: W2) -> Self {
-        Self {
-            index_writer,
-            position_writer,
-            item_writer,
-            index_record: None,
-        }
-    }
-
-    /// Returns the inner position writer.
-    pub fn position_writer(&self) -> &W2 {
-        &self.position_writer
-    }
-
-    /// Returns a mutable reference to the inner position writer.
-    pub fn position_writer_mut(&mut self) -> &mut W2 {
-        &mut self.position_writer
-    }
-
-    /// Writes the magic numbers.
-    pub fn write_magic(&mut self) -> io::Result<()> {
-        V::write_magic(&mut self.index_writer)
-            .and_then(|_| V::write_magic(&mut self.position_writer))
-            .and_then(|_| V::write_magic(&mut self.item_writer))
-    }
-}
-
-impl<W1, W2, V> BgzfWriter<W1, W2, V>
-where
-    W1: io::Write,
-    W2: io::Write,
-    V: Version,
-{
-    /// Writes a single record.
-    pub fn write_record<I>(&mut self, record: &Record<I, V::Item>) -> io::Result<()>
-    where
-        I: AsRef<str>,
-    {
-        V::write_record(self, record)
-    }
-
     /// Finishes writing.
-    pub fn finish(mut self) -> io::Result<(W1, W2, W2)> {
+    pub fn finish(mut self) -> io::Result<(W, W, W)> {
         if let Some(record) = self.index_record {
             record.write(&mut self.index_writer)?;
         }
@@ -111,22 +49,98 @@ where
             self.item_writer.finish()?,
         ))
     }
+
+    /// Creates a new writer from existing BGZF writers.
+    pub fn from_bgzf(
+        index_writer: W,
+        position_writer: bgzf::Writer<W>,
+        item_writer: bgzf::Writer<W>,
+    ) -> Self {
+        Self {
+            index_writer,
+            position_writer,
+            item_writer,
+            index_record: None,
+        }
+    }
+
+    /// Returns the index writer.
+    pub fn index_writer(&self) -> &W {
+        &self.index_writer
+    }
+
+    /// Returns a mutable reference to the index.
+    pub fn index_writer_mut(&mut self) -> &mut W {
+        &mut self.index_writer
+    }
+
+    /// Returns the inner index, position writer, and item writer, consuming `self`.
+    pub fn into_parts(self) -> (W, bgzf::Writer<W>, bgzf::Writer<W>) {
+        (self.index_writer, self.position_writer, self.item_writer)
+    }
+
+    /// Returns the inner item writer.
+    pub fn item_writer(&self) -> &bgzf::Writer<W> {
+        &self.item_writer
+    }
+
+    /// Returns a mutable reference to the inner item writer.
+    pub fn item_writer_mut(&mut self) -> &mut bgzf::Writer<W> {
+        &mut self.item_writer
+    }
+
+    /// Creates a new writer.
+    ///
+    /// The provided writers will be wrapped in [`bgzf::Writer`]s. To create a writer from existing
+    /// BGZF writers, see [`Self::from_bgzf`].
+    pub fn new(index_writer: W, position_writer: W, item_writer: W) -> Self {
+        Self::from_bgzf(
+            index_writer,
+            bgzf::Writer::new(position_writer),
+            bgzf::Writer::new(item_writer),
+        )
+    }
+
+    /// Returns the inner position writer.
+    pub fn position_writer(&self) -> &bgzf::Writer<W> {
+        &self.position_writer
+    }
+
+    /// Returns a mutable reference to the inner position writer.
+    pub fn position_writer_mut(&mut self) -> &mut bgzf::Writer<W> {
+        &mut self.position_writer
+    }
+
+    /// Writes the magic numbers.
+    pub fn write_magic(&mut self) -> io::Result<()> {
+        V::write_magic(&mut self.index_writer)
+            .and_then(|_| V::write_magic(&mut self.position_writer))
+            .and_then(|_| V::write_magic(&mut self.item_writer))
+    }
+
+    /// Writes a single record.
+    pub fn write_record<I>(&mut self, record: &Record<I, V::Item>) -> io::Result<()>
+    where
+        I: AsRef<str>,
+    {
+        V::write_record(self, record)
+    }
 }
 
-impl<V> BgzfWriter<io::BufWriter<fs::File>, io::BufWriter<fs::File>, V>
+impl<V> Writer<io::BufWriter<fs::File>, V>
 where
     V: Version,
 {
-    /// Creates a new BGZF writer from any member path.
+    /// Creates a new writer from any member path.
     ///
     /// This method relies on stripping a conventional suffix from the member path and
-    /// reconstructing all member paths. See [`Self::from_bgzf_prefix`] for details on
+    /// reconstructing all member paths. See [`Self::from_prefix`] for details on
     /// conventional naming.
     ///
     /// If the paths already exists, they will be overwritten.
     ///
     /// The magic number will be written to the paths.
-    pub fn from_bgzf_member_path<P>(member_path: P) -> io::Result<Self>
+    pub fn from_member_path<P>(member_path: P) -> io::Result<Self>
     where
         P: AsRef<Path>,
     {
@@ -142,30 +156,28 @@ where
             )
         })?;
 
-        Self::from_bgzf_prefix(prefix)
+        Self::from_prefix(prefix)
     }
 
-    /// Creates a new BGZF writer from paths.
+    /// Creates a new writer from paths.
     ///
     /// If the paths already exists, they will be overwritten.
     ///
     /// The magic number will be written to the paths.
-    pub fn from_bgzf_paths<P>(index_path: P, position_path: P, item_path: P) -> io::Result<Self>
+    pub fn from_paths<P>(index_path: P, position_path: P, item_path: P) -> io::Result<Self>
     where
         P: AsRef<Path>,
     {
         let index_writer = fs::File::create(index_path).map(io::BufWriter::new)?;
-        let position_writer = open_bgzf(position_path)?;
-        let item_writer = open_bgzf(item_path)?;
+        let position_writer = fs::File::create(position_path).map(io::BufWriter::new)?;
+        let item_writer = fs::File::create(item_path).map(io::BufWriter::new)?;
 
         let mut new = Self::new(index_writer, position_writer, item_writer);
-
         new.write_magic()?;
-
         Ok(new)
     }
 
-    /// Creates a new BGZF writer from a shared prefix.
+    /// Creates a new writer from a shared prefix.
     ///
     /// Conventionally, the SAF index, positions, and item files are named according to a shared
     /// prefix and specific extensions for each file. See [`crate::saf::ext`] for these extensions.
@@ -174,23 +186,13 @@ where
     /// If the paths already exists, they will be overwritten.
     ///
     /// The magic number will be written to the paths.
-    pub fn from_bgzf_prefix<P>(prefix: P) -> io::Result<Self>
+    pub fn from_prefix<P>(prefix: P) -> io::Result<Self>
     where
         P: AsRef<Path>,
     {
         let [index_path, position_path, item_path] =
             member_paths_from_prefix(&prefix.as_ref().to_string_lossy());
 
-        Self::from_bgzf_paths(index_path, position_path, item_path)
+        Self::from_paths(index_path, position_path, item_path)
     }
-}
-
-/// Creates a new BGZF writer from a path.
-fn open_bgzf<P>(path: P) -> io::Result<bgzf::Writer<io::BufWriter<fs::File>>>
-where
-    P: AsRef<Path>,
-{
-    fs::File::create(path)
-        .map(io::BufWriter::new)
-        .map(bgzf::Writer::new)
 }
