@@ -10,15 +10,15 @@ use crate::{
     ReadStatus,
 };
 
-use super::{BgzfReader, Index};
+use super::{Index, Reader};
 
-/// An intersection of BGZF SAF file readers.
+/// An intersection of SAF file readers.
 ///
 /// The intersection takes an arbitrary number of readers and returns data where all readers
 /// contain data for the same contig and position. It is assumed that contigs are sorted in the
 /// same order in each file, and that positions are sorted numerically within each contig.
 pub struct Intersect<R, V> {
-    readers: Vec<BgzfReader<R, V>>,
+    readers: Vec<Reader<R, V>>,
     shared_contigs: SharedContigs,
     ids: Vec<usize>, // Current reader contig IDs
 }
@@ -39,9 +39,9 @@ where
     /// Creates a new intersecting reader with an additional reader, consuming `self`.
     ///
     /// Since `self` is consumed, rather than mutated, this can be chained to build intersections
-    /// of multiple readers. See also the [`BgzfReader::intersect`] method for a way to start create
+    /// of multiple readers. See also the [`Reader::intersect`] method for a way to start create
     /// the initial intersecting reader.
-    pub fn intersect(mut self, reader: BgzfReader<R, V>) -> Self {
+    pub fn intersect(mut self, reader: Reader<R, V>) -> Self {
         self.shared_contigs.add_index(reader.index());
         self.readers.push(reader);
         self.ids.push(0);
@@ -49,17 +49,17 @@ where
     }
 
     /// Returns the inner readers.
-    pub fn get_readers(&self) -> &[BgzfReader<R, V>] {
+    pub fn get_readers(&self) -> &[Reader<R, V>] {
         &self.readers
     }
 
     /// Returns a mutable reference to the inner readers.
-    pub fn get_readers_mut(&mut self) -> &mut [BgzfReader<R, V>] {
+    pub fn get_readers_mut(&mut self) -> &mut [Reader<R, V>] {
         &mut self.readers
     }
 
     /// Returns the inner readers, consuming `self`.
-    pub fn into_readers(self) -> Vec<BgzfReader<R, V>> {
+    pub fn into_readers(self) -> Vec<Reader<R, V>> {
         self.readers
     }
 
@@ -68,7 +68,7 @@ where
     /// # Panics
     ///
     /// Panics if `readers` is empty.
-    pub fn new(readers: Vec<BgzfReader<R, V>>) -> Self {
+    pub fn new(readers: Vec<Reader<R, V>>) -> Self {
         match readers.as_slice() {
             [] => panic!("cannot construct empty intersection"),
             [fst, tl @ ..] => {
@@ -120,7 +120,7 @@ where
         }
     }
 
-    pub(super) fn from_reader(reader: BgzfReader<R, V>) -> Self {
+    pub(super) fn from_reader(reader: Reader<R, V>) -> Self {
         Self {
             shared_contigs: SharedContigs::from(reader.index()),
             readers: vec![reader],

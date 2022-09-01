@@ -17,28 +17,20 @@ pub use intersect::Intersect;
 mod traits;
 pub(crate) use traits::ReaderExt;
 
-/// A BGZF SAF reader.
-///
-/// Note that this is a type alias for a [`Reader`], and most methods are
-/// available via the [`Reader`] type.
-pub type BgzfReader<R, V> = Reader<bgzf::Reader<R>, V>;
+/// A SAF reader for the [`V3`] format.
+pub type ReaderV3<R> = Reader<R, V3>;
 
-/// A BGZF SAF reader for the [`V3`] format.
-pub type BgzfReaderV3<R> = BgzfReader<R, V3>;
-
-/// A BGZF SAF reader for the [`V4`] format.
-pub type BgzfReaderV4<R> = BgzfReader<R, V4>;
+/// A SAF reader for the [`V4`] format.
+pub type ReaderV4<R> = Reader<R, V4>;
 
 /// A SAF reader.
 ///
 /// The reader is generic over the inner reader type and over the SAF [`Version`] being read.
-/// In most cases, the inner readers should be BGZF readers: therefore, the alias [`BgzfReader`]
-/// with its provided methods should typically be preferred. Version-specific aliases
-/// [`BgzfReaderV3`] and [`BgzfReaderV4`] are also provided for convenience.
+/// Version-specific aliases [`ReaderV3`] and [`ReaderV4`] are provided for convenience.
 pub struct Reader<R, V> {
     location: Location<V>,
-    position_reader: R,
-    item_reader: R,
+    position_reader: bgzf::Reader<R>,
+    item_reader: bgzf::Reader<R>,
 }
 
 impl<R, V> Reader<R, V>
@@ -49,6 +41,25 @@ where
     /// Returns a new record suitable for use in reading.
     pub fn create_record_buf(&self) -> Record<Id, V::Item> {
         V::create_record_buf(self.index())
+    }
+
+    /// Creates a new reader from existing BGZF readers.
+    ///
+    /// # Returns
+    ///
+    /// `None` if `index` contains no records.
+    pub fn from_bgzf(
+        index: Index<V>,
+        position_reader: bgzf::Reader<R>,
+        item_reader: bgzf::Reader<R>,
+    ) -> Option<Self> {
+        let location = Location::setup(index)?;
+
+        Some(Self {
+            location,
+            position_reader,
+            item_reader,
+        })
     }
 
     /// Returns the index.
@@ -62,42 +73,43 @@ where
     }
 
     /// Returns the inner index, position reader, and item reader, consuming `self`.
-    pub fn into_parts(self) -> (Index<V>, R, R) {
+    pub fn into_parts(self) -> (Index<V>, bgzf::Reader<R>, bgzf::Reader<R>) {
         (self.location.index, self.position_reader, self.item_reader)
     }
 
     /// Returns the inner item reader.
-    pub fn item_reader(&self) -> &R {
+    pub fn item_reader(&self) -> &bgzf::Reader<R> {
         &self.item_reader
     }
 
     /// Returns a mutable reference to the inner item reader.
-    pub fn item_reader_mut(&mut self) -> &mut R {
+    pub fn item_reader_mut(&mut self) -> &mut bgzf::Reader<R> {
         &mut self.item_reader
     }
 
     /// Creates a new reader.
     ///
+    /// The provided readers will be wrapped in [`bgzf::Reader`]s. To create a reader from existing
+    /// BGZF readers, see [`Self::from_bgzf`].
+    ///
     /// # Returns
     ///
     /// `None` if `index` contains no records.
     pub fn new(index: Index<V>, position_reader: R, item_reader: R) -> Option<Self> {
-        let location = Location::setup(index)?;
-
-        Some(Self {
-            position_reader,
-            item_reader,
-            location,
-        })
+        Self::from_bgzf(
+            index,
+            bgzf::Reader::new(position_reader),
+            bgzf::Reader::new(item_reader),
+        )
     }
 
     /// Returns the inner position reader.
-    pub fn position_reader(&self) -> &R {
+    pub fn position_reader(&self) -> &bgzf::Reader<R> {
         &self.position_reader
     }
 
     /// Returns a mutable reference to the inner position reader.
-    pub fn position_reader_mut(&mut self) -> &mut R {
+    pub fn position_reader_mut(&mut self) -> &mut bgzf::Reader<R> {
         &mut self.position_reader
     }
 
@@ -165,7 +177,7 @@ where
     }
 }
 
-impl<R, V> BgzfReader<R, V>
+impl<R, V> Reader<R, V>
 where
     R: io::BufRead + io::Seek,
     V: Version,
@@ -225,18 +237,18 @@ where
     }
 }
 
-impl<V> BgzfReader<io::BufReader<fs::File>, V>
+impl<V> Reader<io::BufReader<fs::File>, V>
 where
     V: Version,
 {
-    /// Creates a new BGZF reader from any member path.
+    /// Creates a new reader from any member path.
     ///
     /// This method relies on stripping a conventional suffix from the member path and
-    /// reconstructing all member paths. See [`Self::from_bgzf_prefix`] for details on
+    /// reconstructing all member paths. See [`Self::from_prefix`] for details on
     /// conventional naming.
     ///
     /// The stream will be positioned immediately after the magic number.
-    pub fn from_bgzf_member_path<P>(member_path: P) -> io::Result<Self>
+    pub fn from_member_path<P>(member_path: P) -> io::Result<Self>
     where
         P: AsRef<Path>,
     {
@@ -252,19 +264,19 @@ where
             )
         })?;
 
-        Self::from_bgzf_prefix(prefix)
+        Self::from_prefix(prefix)
     }
 
-    /// Creates a new BGZF reader from paths.
+    /// Creates a new reader from paths.
     ///
     /// The stream will be positioned immediately after the magic number.
-    pub fn from_bgzf_paths<P>(index_path: P, position_path: P, item_path: P) -> io::Result<Self>
+    pub fn from_paths<P>(index_path: P, position_path: P, item_path: P) -> io::Result<Self>
     where
         P: AsRef<Path>,
     {
         let index = Index::read_from_path(index_path)?;
-        let position_reader = open_bgzf(position_path)?;
-        let item_reader = open_bgzf(item_path)?;
+        let position_reader = fs::File::open(position_path).map(io::BufReader::new)?;
+        let item_reader = fs::File::open(item_path).map(io::BufReader::new)?;
 
         let mut new = Self::new(index, position_reader, item_reader).ok_or_else(|| {
             io::Error::new(io::ErrorKind::InvalidData, "SAF index contains no records")
@@ -275,21 +287,21 @@ where
         Ok(new)
     }
 
-    /// Creates a new BGZF reader from a shared prefix.
+    /// Creates a new reader from a shared prefix.
     ///
     /// Conventionally, the SAF index, positions, and item files are named according to a shared
     /// prefix and specific extensions for each file. See [`crate::saf::ext`] for these extensions.
     /// Where this convention is observed, this method opens a reader from the shared prefix.
     ///
     /// The stream will be positioned immediately after the magic number.
-    pub fn from_bgzf_prefix<P>(prefix: P) -> io::Result<Self>
+    pub fn from_prefix<P>(prefix: P) -> io::Result<Self>
     where
         P: AsRef<Path>,
     {
         let [index_path, position_path, item_path] =
             member_paths_from_prefix(&prefix.as_ref().to_string_lossy());
 
-        Self::from_bgzf_paths(index_path, position_path, item_path)
+        Self::from_paths(index_path, position_path, item_path)
     }
 }
 
@@ -356,14 +368,4 @@ fn eof_err(msg: &str) -> io::Error {
 
 fn data_err(msg: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg)
-}
-
-/// Creates a new BGZF reader from a path.
-fn open_bgzf<P>(path: P) -> io::Result<bgzf::Reader<io::BufReader<fs::File>>>
-where
-    P: AsRef<Path>,
-{
-    fs::File::open(path)
-        .map(io::BufReader::new)
-        .map(bgzf::Reader::new)
 }

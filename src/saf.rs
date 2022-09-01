@@ -29,7 +29,7 @@ pub mod index;
 pub use index::Index;
 
 pub mod reader;
-pub use reader::{BgzfReader, Reader};
+pub use reader::{Reader, ReaderV3, ReaderV4};
 
 pub mod record;
 pub use record::Record;
@@ -46,7 +46,7 @@ pub(self) mod tests {
 
     use std::io::{self, Seek};
 
-    pub type MockBgzfReader = BgzfReader<io::Cursor<Vec<u8>>, V3>;
+    pub type MockReader = Reader<io::Cursor<Vec<u8>>, V3>;
     pub type MockBgzfWriter = BgzfWriter<io::Cursor<Vec<u8>>, io::Cursor<Vec<u8>>, V3>;
 
     impl MockBgzfWriter {
@@ -61,23 +61,19 @@ pub(self) mod tests {
         }
     }
 
-    impl From<MockBgzfWriter> for MockBgzfReader {
+    impl From<MockBgzfWriter> for MockReader {
         fn from(writer: MockBgzfWriter) -> Self {
-            let (mut index_cursor, mut position_cursor, mut item_cursor) = writer.finish().unwrap();
+            let (mut index_reader, mut position_reader, mut item_reader) = writer.finish().unwrap();
 
-            index_cursor.seek(io::SeekFrom::Start(0)).unwrap();
-            position_cursor.seek(io::SeekFrom::Start(0)).unwrap();
-            item_cursor.seek(io::SeekFrom::Start(0)).unwrap();
+            index_reader.seek(io::SeekFrom::Start(0)).unwrap();
+            position_reader.seek(io::SeekFrom::Start(0)).unwrap();
+            item_reader.seek(io::SeekFrom::Start(0)).unwrap();
 
-            let index = Index::read(&mut index_cursor).unwrap();
+            let index = Index::read(&mut index_reader).unwrap();
 
-            let mut position_reader = bgzf::Reader::new(position_cursor);
-            V3::read_magic(&mut position_reader).unwrap();
-
-            let mut item_reader = bgzf::Reader::new(item_cursor);
-            V3::read_magic(&mut item_reader).unwrap();
-
-            Self::new(index, position_reader, item_reader).unwrap()
+            let mut new = Self::new(index, position_reader, item_reader).unwrap();
+            new.read_magic().unwrap();
+            new
         }
     }
 
@@ -89,7 +85,7 @@ pub(self) mod tests {
                 writer.write_record(record).unwrap();
             }
 
-            MockBgzfReader::from(writer)
+            MockReader::from(writer)
         }};
     }
     pub(super) use reader;
