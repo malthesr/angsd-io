@@ -40,31 +40,24 @@ pub use version::{Version, V3, V4};
 pub mod writer;
 pub use writer::{BgzfWriter, Writer};
 
-pub(self) type Endian = byteorder::LittleEndian;
-
 #[cfg(test)]
 pub(self) mod tests {
     use super::*;
 
     use std::io::{self, Seek};
 
-    use crate::saf::writer::BgzfItemWriter;
-
     pub type MockBgzfReader = BgzfReader<io::Cursor<Vec<u8>>, V3>;
     pub type MockBgzfWriter = BgzfWriter<io::Cursor<Vec<u8>>, io::Cursor<Vec<u8>>, V3>;
 
     impl MockBgzfWriter {
         pub fn create() -> Self {
-            let mut index_writer = io::Cursor::new(Vec::new());
-            V3::write_magic(&mut index_writer).unwrap();
+            let index_writer = io::Cursor::new(Vec::new());
+            let position_writer = bgzf::Writer::new(io::Cursor::new(Vec::new()));
+            let item_writer = bgzf::Writer::new(io::Cursor::new(Vec::new()));
 
-            let mut position_writer = bgzf::Writer::new(io::Cursor::new(Vec::new()));
-            V3::write_magic(&mut position_writer).unwrap();
-
-            let mut item_writer = BgzfItemWriter::from_bgzf(io::Cursor::new(Vec::new()));
-            item_writer.write_magic().unwrap();
-
-            Self::new(index_writer, position_writer, item_writer)
+            let mut new = Self::new(index_writer, position_writer, item_writer);
+            new.write_magic().unwrap();
+            new
         }
     }
 

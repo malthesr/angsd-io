@@ -9,9 +9,6 @@ use super::{
     Version, V3,
 };
 
-mod item_writer;
-pub use item_writer::{BgzfItemWriter, ItemWriter};
-
 mod traits;
 pub use traits::WriterExt;
 
@@ -27,7 +24,7 @@ pub type BgzfWriter<W1, W2, V> = Writer<W1, bgzf::Writer<W2>, V>;
 pub struct Writer<W1, W2, V: Version = V3> {
     index_writer: W1,
     position_writer: W2,
-    item_writer: ItemWriter<W2>,
+    item_writer: W2,
     index_record: Option<index::Record<V>>,
 }
 
@@ -48,22 +45,22 @@ where
     }
 
     /// Returns the inner index, position writer, and item writer, consuming `self`.
-    pub fn into_parts(self) -> (W1, W2, ItemWriter<W2>) {
+    pub fn into_parts(self) -> (W1, W2, W2) {
         (self.index_writer, self.position_writer, self.item_writer)
     }
 
     /// Returns the inner item writer.
-    pub fn item_writer(&self) -> &ItemWriter<W2> {
+    pub fn item_writer(&self) -> &W2 {
         &self.item_writer
     }
 
     /// Returns a mutable reference to the inner item writer.
-    pub fn item_writer_mut(&mut self) -> &mut ItemWriter<W2> {
+    pub fn item_writer_mut(&mut self) -> &mut W2 {
         &mut self.item_writer
     }
 
     /// Creates a new writer.
-    pub fn new(index_writer: W1, position_writer: W2, item_writer: ItemWriter<W2>) -> Self {
+    pub fn new(index_writer: W1, position_writer: W2, item_writer: W2) -> Self {
         Self {
             index_writer,
             position_writer,
@@ -84,7 +81,9 @@ where
 
     /// Writes the magic numbers.
     pub fn write_magic(&mut self) -> io::Result<()> {
-        V::write_magic(&mut self.position_writer).and_then(|_| self.item_writer.write_magic())
+        V::write_magic(&mut self.index_writer)
+            .and_then(|_| V::write_magic(&mut self.position_writer))
+            .and_then(|_| V::write_magic(&mut self.item_writer))
     }
 }
 
@@ -111,7 +110,7 @@ where
             if index_record.name() != contig_id {
                 // Case (1a)
                 let position_offset = u64::from(self.position_writer.virtual_position());
-                let item_offset = u64::from(self.item_writer.get_ref().virtual_position());
+                let item_offset = u64::from(self.item_writer.virtual_position());
 
                 let old = mem::replace(
                     index_record,
@@ -137,7 +136,7 @@ where
 
         // Write record
         self.position_writer.write_position(record.position())?;
-        self.item_writer.write_item(record.item())?;
+        self.item_writer.write_likelihoods(record.item())?;
 
         Ok(())
     }
@@ -151,7 +150,7 @@ where
         Ok((
             self.index_writer,
             self.position_writer.finish()?,
-            self.item_writer.into_inner().finish()?,
+            self.item_writer.finish()?,
         ))
     }
 }
@@ -197,15 +196,15 @@ where
     where
         P: AsRef<Path>,
     {
-        let mut index_writer = fs::File::create(index_path).map(io::BufWriter::new)?;
-        V::write_magic(&mut index_writer)?;
+        let index_writer = fs::File::create(index_path).map(io::BufWriter::new)?;
+        let position_writer = open_bgzf(position_path)?;
+        let item_writer = open_bgzf(item_path)?;
 
-        let mut position_writer = open_bgzf(position_path)?;
-        V::write_magic(&mut position_writer)?;
+        let mut new = Self::new(index_writer, position_writer, item_writer);
 
-        let item_writer = ItemWriter::from_bgzf_path(item_path)?;
+        new.write_magic()?;
 
-        Ok(Self::new(index_writer, position_writer, item_writer))
+        Ok(new)
     }
 
     /// Creates a new BGZF writer from a shared prefix.
