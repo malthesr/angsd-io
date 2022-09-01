@@ -5,7 +5,7 @@ use indexmap::IndexMap;
 use crate::{
     saf::{
         record::{Id, Record},
-        Version,
+        version::Version,
     },
     ReadStatus,
 };
@@ -335,7 +335,9 @@ impl FromIterator<(String, Vec<usize>)> for SharedContigs {
 mod tests {
     use super::*;
 
-    use crate::saf::{tests::*, V3};
+    use crate::saf::tests::*;
+
+    use crate::saf::version::V3;
 
     fn test_intersect<R>(mut intersect: Intersect<R, V3>, shared: &[(&str, u32)]) -> io::Result<()>
     where

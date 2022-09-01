@@ -1,3 +1,16 @@
+//! SAF file versions.
+//!
+//! This module provides types and traits for abstracting over different SAF files version.
+//! Users should not generally need to interact with code in this module, except perhaps to use the
+//! marker structs in generic bounds.
+//!
+//! Note that the SAF versioning is ambiguous: the versions described in the magic numbers are
+//! out of sync with those used internally in ANGSD. The usage here follows the magic numbers.
+//! Hence, what is here referred to as [`V3`] corresponds to files with magic numbers `safv3`,
+//! which is also sometimes referred to as "Version 1" in ANGSD. Likewise, what is here referred to
+//! as [`V4`] corresponds to files with magic numbers `safv4`, also sometimes known as "Version 2"
+//! in ANGSD.
+
 use std::{io, mem};
 
 use byteorder::{ReadBytesExt, LE};
@@ -17,13 +30,6 @@ const MAGIC_LEN: usize = 8;
 ///
 /// Users should not generally need to use methods defined by this trait directly. Rather, these
 /// methods are used by struct generic over methods instead.
-///
-/// Note that the SAF versioning is ambiguous: the versions described in the magic numbers are
-/// out of sync with those used internally in ANGSD. The usage here follows the magic numbers.
-/// Hence, what is here referred to as [`V3`] corresponds to files with magic numbers `safv3`,
-/// which is also sometimes referred to as "Version 1" in ANGSD. Likewise, what is here referred to
-/// as [`V4`] corresponds to files with magic numbers `safv4`, also sometimes known as "Version 2"
-/// in ANGSD.
 pub trait Version: Sized {
     /// The numeric description of the SAF version.
     const VERSION: u8;

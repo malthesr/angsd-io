@@ -1,4 +1,4 @@
-//! Read intersecting sites in two BGZF SAF files and print readable sites.
+//! Read intersecting sites in two SAF files and print readable sites.
 
 use std::{
     env,
@@ -13,9 +13,9 @@ fn main() -> io::Result<()> {
         .map(|p| saf::ReaderV3::from_member_path(p))
         .collect::<io::Result<Vec<_>>>()?;
 
-    // Note also the [`BgzfReader::intersect`] and [`Intersect::intersect`] methods to construct
+    // Note also the [`Reader::intersect`] and [`Intersect::intersect`] methods to construct
     // intersecting reader when the number of readers are statically known.
-    let mut intersect = saf::reader::Intersect::new(readers);
+    let mut intersect = saf::Intersect::new(readers);
 
     let stdout = io::stdout();
     let mut writer = stdout.lock();

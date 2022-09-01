@@ -1,4 +1,4 @@
-//! Conventional file name extensions for SAF files.
+//! SAF file name extensions.
 
 /// Conventional index file extension.
 pub const INDEX_EXT: &str = "saf.idx";

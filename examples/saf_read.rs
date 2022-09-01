@@ -1,4 +1,4 @@
-//! Read a BGZF SAF file and print readable index and records.
+//! Read a SAF file and print readable index and records.
 
 use std::{
     env,

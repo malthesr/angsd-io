@@ -8,7 +8,7 @@ use super::{
     ext::{member_paths_from_prefix, prefix_from_member_path},
     index::Index,
     record::{Id, Record},
-    Version, V3, V4,
+    version::{Version, V3, V4},
 };
 
 mod intersect;

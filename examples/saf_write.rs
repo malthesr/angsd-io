@@ -1,4 +1,4 @@
-//! Read text-based SAF records and print as BGZF SAF files.
+//! Read text-based SAF records and print as SAF files.
 
 use std::{
     env,

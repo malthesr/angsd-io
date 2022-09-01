@@ -1,8 +1,8 @@
-//! SAF record.
+//! A SAF record.
 
 use std::{error::Error, fmt, io, num, str::FromStr};
 
-use super::{index::Index, Version};
+use super::{index::Index, version::Version};
 
 const SEP: &str = "\t";
 

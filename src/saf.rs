@@ -28,16 +28,15 @@ pub mod ext;
 pub mod index;
 pub use index::Index;
 
-pub mod reader;
-pub use reader::{Reader, ReaderV3, ReaderV4};
+mod reader;
+pub use reader::{Intersect, Reader, ReaderV3, ReaderV4};
 
 pub mod record;
 pub use record::Record;
 
-mod version;
-pub use version::{Version, V3, V4};
+pub mod version;
 
-pub mod writer;
+mod writer;
 pub use writer::{Writer, WriterV3, WriterV4};
 
 #[cfg(test)]
@@ -45,6 +44,8 @@ pub(self) mod tests {
     use super::*;
 
     use std::io::{self, Seek};
+
+    use version::V3;
 
     pub type MockReader = Reader<io::Cursor<Vec<u8>>, V3>;
     pub type MockWriter = Writer<io::Cursor<Vec<u8>>, V3>;

@@ -1,10 +1,8 @@
-//! The SAF index format.
+//! A SAF index.
 
 use std::{fmt, fs, io, path::Path};
 
-use crate::saf::reader::ReaderExt;
-
-use super::Version;
+use crate::saf::{reader::ReaderExt, version::Version};
 
 mod record;
 pub use record::Record;
