@@ -4,8 +4,13 @@ use byteorder::{ReadBytesExt, LE};
 
 use crate::ReadStatus;
 
-/// An extension trait for reading SAF positions.
+/// An extension trait for reading.
 pub trait ReaderExt {
+    /// Checks if reader has any data left.
+    ///
+    /// This may attempt to fill the underlying buffer, therefore it is fallible.
+    fn is_data_left(&mut self) -> io::Result<bool>;
+
     /// Read a single position.
     ///
     /// Returns `None` if reader is at end of file.
@@ -19,6 +24,10 @@ impl<R> ReaderExt for R
 where
     R: io::BufRead,
 {
+    fn is_data_left(&mut self) -> io::Result<bool> {
+        self.fill_buf().map(|buf| !buf.is_empty())
+    }
+
     fn read_position(&mut self) -> io::Result<Option<u32>> {
         // Modified from std::io::default_read_exact
         let mut arr = [0; mem::size_of::<u32>()];
@@ -55,17 +64,4 @@ where
 
         self.read_f32_into::<LE>(buf).map(|_| ReadStatus::NotDone)
     }
-}
-
-/// A type that can be read into a provided buffer.
-pub trait ReadableInto {
-    /// The result type returned.
-    ///
-    /// This will typically either be unit or a [`ReadStatus`].
-    type Return;
-
-    /// Reads an item into the provided buffer.
-    fn read_into<R>(reader: &mut R, buf: &mut Self) -> io::Result<Self::Return>
-    where
-        R: io::BufRead;
 }

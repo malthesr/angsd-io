@@ -2,13 +2,6 @@
 
 use std::{error::Error, fmt, io, num, str::FromStr};
 
-use byteorder::{ReadBytesExt, LE};
-
-use crate::{
-    saf::reader::{ReadableInto, ReaderExt},
-    ReadStatus,
-};
-
 use super::{index::Index, Version};
 
 const SEP: &str = "\t";
@@ -70,46 +63,6 @@ impl Band {
     /// Returns a mutable reference to the band likelihoods.
     pub fn likelihoods_mut(&mut self) -> &mut Vec<f32> {
         &mut self.likelihoods
-    }
-}
-
-impl ReadableInto for Band {
-    type Return = ReadStatus;
-
-    fn read_into<R>(reader: &mut R, buf: &mut Self) -> io::Result<Self::Return>
-    where
-        R: io::BufRead,
-    {
-        if ReadStatus::check(reader)?.is_done() {
-            return Ok(ReadStatus::Done);
-        }
-
-        *buf.start_mut() = reader
-            .read_u32::<LE>()?
-            .try_into()
-            .expect("cannot convert band start to usize");
-
-        let len: usize = reader
-            .read_u32::<LE>()?
-            .try_into()
-            .expect("cannot convert band length to usize");
-
-        buf.likelihoods_mut().resize(len, 0.0);
-
-        reader
-            .read_likelihoods(buf.likelihoods_mut())
-            .map(|_| ReadStatus::NotDone)
-    }
-}
-
-impl ReadableInto for Likelihoods {
-    type Return = ReadStatus;
-
-    fn read_into<R>(reader: &mut R, buf: &mut Self) -> io::Result<Self::Return>
-    where
-        R: io::BufRead,
-    {
-        reader.read_likelihoods(buf)
     }
 }
 

@@ -221,7 +221,10 @@ struct Contigs {
 }
 
 impl Contigs {
-    fn add_index(&mut self, index: &Index) {
+    fn add_index<V>(&mut self, index: &Index<V>)
+    where
+        V: Version,
+    {
         let map: IndexMap<&str, usize> = index
             .records()
             .iter()
@@ -239,7 +242,10 @@ impl Contigs {
         })
     }
 
-    fn next_shared(&self, id: usize, index: &Index) -> Option<usize> {
+    fn next_shared<V>(&self, id: usize, index: &Index<V>) -> Option<usize>
+    where
+        V: Version,
+    {
         let name = index.records()[id].name();
 
         self.contigs.get_index_of(name).or_else(|| {
@@ -250,8 +256,11 @@ impl Contigs {
     }
 }
 
-impl From<&Index> for Contigs {
-    fn from(index: &Index) -> Self {
+impl<V> From<&Index<V>> for Contigs
+where
+    V: Version,
+{
+    fn from(index: &Index<V>) -> Self {
         index
             .records()
             .iter()

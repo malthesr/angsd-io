@@ -1,9 +1,12 @@
 use std::io;
 
+use byteorder::{ReadBytesExt, LE};
+
 use crate::ReadStatus;
 
 use super::{
-    reader::ReadableInto,
+    index::{self, IndexReaderExt, IndexWriterExt},
+    reader::ReaderExt,
     record::{Band, Likelihoods},
 };
 
@@ -11,11 +14,31 @@ const MAGIC_LEN: usize = 8;
 
 /// A type that describes a SAF file version.
 pub trait Version: Sized {
+    /// The numeric description of the SAF version.
+    const VERSION: u8;
+
     /// The SAF version magic number.
     const MAGIC_NUMBER: [u8; MAGIC_LEN];
 
     /// The items contained in the SAF item file for this version.
-    type Item: ReadableInto<Return = ReadStatus>;
+    type Item;
+
+    /// Reads the SAF index record for this version from a reader.
+    fn read_index_record<R>(reader: &mut R) -> io::Result<index::Record<Self>>
+    where
+        R: io::BufRead;
+
+    /// Reads a single item from a reader into a provided buffer.
+    ///
+    /// The stream is assumed to be positioned immediately before the start of the item.
+    fn read_item<R>(reader: &mut R, buf: &mut Self::Item) -> io::Result<ReadStatus>
+    where
+        R: io::BufRead;
+
+    /// Writes the SAF index record for this version to a reader.
+    fn write_index_record<W>(writer: &mut W, record: &index::Record<Self>) -> io::Result<()>
+    where
+        W: io::Write;
 
     /// Reads the SAF version magic number from a reader.
     fn read_magic<R>(reader: &mut R) -> io::Result<()>
@@ -32,21 +55,11 @@ pub trait Version: Sized {
                 io::ErrorKind::InvalidData,
                 format!(
                     "invalid or unsupported SAF magic number \
-                (found '{magic:02x?}', expected '{:02x?}')",
+                    (found '{magic:02x?}', expected '{:02x?}')",
                     Self::MAGIC_NUMBER
                 ),
             ))
         }
-    }
-
-    /// Reads a single item from a reader into a provided buffer.
-    ///
-    /// The stream is assumed to be positioned immediately before the start of the item.
-    fn read_item<R>(reader: &mut R, into: &mut Self::Item) -> io::Result<ReadStatus>
-    where
-        R: io::BufRead,
-    {
-        ReadableInto::read_into(reader, into)
     }
 
     /// Writes the SAF version magic number to a writer.
@@ -63,9 +76,45 @@ pub trait Version: Sized {
 pub struct V3;
 
 impl Version for V3 {
+    const VERSION: u8 = 3;
+
     const MAGIC_NUMBER: [u8; MAGIC_LEN] = [b's', b'a', b'f', b'v', b'3', 0, 0, 0];
 
     type Item = Likelihoods;
+
+    fn read_index_record<R>(reader: &mut R) -> io::Result<index::Record<Self>>
+    where
+        R: io::BufRead,
+    {
+        let name = reader.read_contig_name()?;
+        let sites = reader.read_sites()?;
+        let position_offset = reader.read_position_offset()?;
+        let item_offset = reader.read_item_offset()?;
+
+        Ok(index::Record::new(
+            name,
+            sites,
+            position_offset,
+            item_offset,
+        ))
+    }
+
+    fn read_item<R>(reader: &mut R, buf: &mut Self::Item) -> io::Result<ReadStatus>
+    where
+        R: io::BufRead,
+    {
+        reader.read_likelihoods(buf)
+    }
+
+    fn write_index_record<W>(writer: &mut W, record: &index::Record<Self>) -> io::Result<()>
+    where
+        W: io::Write,
+    {
+        writer.write_contig_name(record.name())?;
+        writer.write_sites(record.sites())?;
+        writer.write_position_offset(record.position_offset())?;
+        writer.write_item_offset(record.item_offset())
+    }
 }
 
 /// A marker type for the SAF version 3.
@@ -73,7 +122,64 @@ impl Version for V3 {
 pub struct V4;
 
 impl Version for V4 {
+    const VERSION: u8 = 4;
+
     const MAGIC_NUMBER: [u8; MAGIC_LEN] = [b's', b'a', b'f', b'v', b'3', 0, 0, 0];
 
     type Item = Band;
+
+    fn read_index_record<R>(reader: &mut R) -> io::Result<index::Record<Self>>
+    where
+        R: io::BufRead,
+    {
+        let name = reader.read_contig_name()?;
+        let sites = reader.read_sites()?;
+        let sum_band = reader.read_sum_band()?;
+        let position_offset = reader.read_position_offset()?;
+        let item_offset = reader.read_item_offset()?;
+
+        Ok(index::Record::new_with_sum_band(
+            name,
+            sites,
+            sum_band,
+            position_offset,
+            item_offset,
+        ))
+    }
+
+    fn read_item<R>(reader: &mut R, buf: &mut Self::Item) -> io::Result<ReadStatus>
+    where
+        R: io::BufRead,
+    {
+        if ReadStatus::check(reader)?.is_done() {
+            return Ok(ReadStatus::Done);
+        }
+
+        *buf.start_mut() = reader
+            .read_u32::<LE>()?
+            .try_into()
+            .expect("cannot convert band start to usize");
+
+        let len: usize = reader
+            .read_u32::<LE>()?
+            .try_into()
+            .expect("cannot convert band length to usize");
+
+        buf.likelihoods_mut().resize(len, 0.0);
+
+        reader
+            .read_likelihoods(buf.likelihoods_mut())
+            .map(|_| ReadStatus::NotDone)
+    }
+
+    fn write_index_record<W>(writer: &mut W, record: &index::Record<Self>) -> io::Result<()>
+    where
+        W: io::Write,
+    {
+        writer.write_contig_name(record.name())?;
+        writer.write_sites(record.sites())?;
+        writer.write_sum_band(record.sum_band())?;
+        writer.write_position_offset(record.position_offset())?;
+        writer.write_item_offset(record.item_offset())
+    }
 }

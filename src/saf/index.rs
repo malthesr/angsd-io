@@ -1,21 +1,23 @@
-//! Reading and writing of the SAF index format.
+//! The SAF index format.
 
-use std::{fmt, io, path::Path};
+use std::{fmt, fs, io, path::Path};
 
-use super::{Version, V3};
+use crate::saf::reader::ReaderExt;
 
-mod reader;
-pub use reader::Reader;
+use super::Version;
 
 mod record;
 pub use record::Record;
 
-mod writer;
-pub use writer::Writer;
+mod traits;
+pub(in crate::saf) use traits::{IndexReaderExt, IndexWriterExt};
 
 /// A SAF file index.
+///
+/// Different SAF file versions differ only in what their records contain. For more details. see
+/// [`Record`].
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Index<V: Version = V3> {
+pub struct Index<V> {
     alleles: usize,
     records: Vec<Record<V>>,
 }
@@ -48,6 +50,37 @@ where
         Self { alleles, records }
     }
 
+    /// Reads a new index from a reader.
+    ///
+    /// The stream is assumed to be positioned at the start.
+    pub fn read<R>(reader: &mut R) -> io::Result<Self>
+    where
+        R: io::BufRead,
+    {
+        V::read_magic(reader)?;
+
+        let alleles = reader.read_alleles()?;
+
+        let mut records = Vec::new();
+        while reader.is_data_left()? {
+            let record = Record::read(reader)?;
+
+            records.push(record)
+        }
+
+        Ok(Index::new(alleles, records))
+    }
+
+    /// Creates a new index by reading from a path.
+    pub fn read_from_path<P>(path: P) -> io::Result<Self>
+    where
+        P: AsRef<Path>,
+    {
+        fs::File::open(path)
+            .map(io::BufReader::new)
+            .and_then(|mut reader| Self::read(&mut reader))
+    }
+
     /// Returns the index records.
     pub fn records(&self) -> &[Record<V>] {
         self.records.as_ref()
@@ -62,15 +95,21 @@ where
     pub fn total_sites(&self) -> usize {
         self.records.iter().map(|rec| rec.sites()).sum()
     }
-}
 
-impl Index<V3> {
-    /// Creates a new index by reading from a path.
-    pub fn read_from_path<P>(path: P) -> io::Result<Self>
+    /// Writes the index to a writer.
+    pub fn write<W>(&self, writer: &mut W) -> io::Result<()>
     where
-        P: AsRef<Path>,
+        W: io::Write,
     {
-        Reader::<_, V3>::from_path(path).and_then(|mut reader| reader.read_index())
+        V::write_magic(writer)?;
+
+        writer.write_alleles(self.alleles())?;
+
+        for record in self.records() {
+            record.write(writer)?;
+        }
+
+        Ok(())
     }
 
     /// Writes the index to a path.
@@ -80,12 +119,19 @@ impl Index<V3> {
     where
         P: AsRef<Path>,
     {
-        Writer::<_, V3>::from_path(path).and_then(|mut writer| writer.write_index(self))
+        fs::File::create(path)
+            .map(io::BufWriter::new)
+            .and_then(|mut writer| self.write(&mut writer))
     }
 }
 
-impl fmt::Display for Index {
+impl<V> fmt::Display for Index<V>
+where
+    V: Version,
+    Record<V>: fmt::Display,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "##version=v{}", V::VERSION)?;
         writeln!(f, "##alleles={}", self.alleles)?;
 
         for record in self.records() {

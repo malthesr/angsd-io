@@ -15,7 +15,7 @@ mod intersect;
 pub use intersect::Intersect;
 
 mod traits;
-pub use traits::{ReadableInto, ReaderExt};
+pub use traits::ReaderExt;
 
 /// A BGZF SAF reader.
 ///
@@ -25,7 +25,7 @@ pub type BgzfReader<R, V> = Reader<bgzf::Reader<R>, V>;
 
 /// A SAF reader.
 pub struct Reader<R, V> {
-    index: Index,
+    index: Index<V>,
     position_reader: R,
     item_reader: R,
     position: ReaderPosition,
@@ -46,17 +46,17 @@ where
     }
 
     /// Returns the index.
-    pub fn index(&self) -> &Index {
+    pub fn index(&self) -> &Index<V> {
         &self.index
     }
 
     /// Returns a mutable reference to the index.
-    pub fn index_mut(&mut self) -> &mut Index {
+    pub fn index_mut(&mut self) -> &mut Index<V> {
         &mut self.index
     }
 
     /// Returns the inner index, position reader, and item reader, consuming `self`.
-    pub fn into_parts(self) -> (Index, R, R) {
+    pub fn into_parts(self) -> (Index<V>, R, R) {
         (self.index, self.position_reader, self.item_reader)
     }
 
@@ -75,7 +75,7 @@ where
     /// # Returns
     ///
     /// `None` if `index` contains no records.
-    pub fn new(index: Index, position_reader: R, item_reader: R) -> Option<Self> {
+    pub fn new(index: Index<V>, position_reader: R, item_reader: R) -> Option<Self> {
         let position = ReaderPosition::setup(&index)?;
 
         Some(Self {
@@ -284,16 +284,6 @@ where
     }
 }
 
-/// Creates a new BGZF reader from a path.
-fn open_bgzf<P>(path: P) -> io::Result<bgzf::Reader<io::BufReader<fs::File>>>
-where
-    P: AsRef<Path>,
-{
-    fs::File::open(path)
-        .map(io::BufReader::new)
-        .map(bgzf::Reader::new)
-}
-
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 struct ReaderPosition {
     contig_id: usize,
@@ -313,11 +303,17 @@ impl ReaderPosition {
         self.sites -= 1
     }
 
-    fn next_contig(&mut self, index: &Index) -> Option<()> {
+    fn next_contig<V>(&mut self, index: &Index<V>) -> Option<()>
+    where
+        V: Version,
+    {
         self.set_contig(index, self.contig_id + 1)
     }
 
-    fn set_contig(&mut self, index: &Index, contig_id: usize) -> Option<()> {
+    fn set_contig<V>(&mut self, index: &Index<V>, contig_id: usize) -> Option<()>
+    where
+        V: Version,
+    {
         self.contig_id = contig_id;
 
         self.sites = index.records().get(self.contig_id)?.sites();
@@ -325,7 +321,10 @@ impl ReaderPosition {
         Some(())
     }
 
-    fn setup(index: &Index) -> Option<Self> {
+    fn setup<V>(index: &Index<V>) -> Option<Self>
+    where
+        V: Version,
+    {
         let contig_id = 0;
         let sites = index.records().first()?.sites();
 
@@ -339,4 +338,14 @@ fn eof_err(msg: &str) -> io::Error {
 
 fn data_err(msg: &str) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, msg)
+}
+
+/// Creates a new BGZF reader from a path.
+fn open_bgzf<P>(path: P) -> io::Result<bgzf::Reader<io::BufReader<fs::File>>>
+where
+    P: AsRef<Path>,
+{
+    fs::File::open(path)
+        .map(io::BufReader::new)
+        .map(bgzf::Reader::new)
 }

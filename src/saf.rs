@@ -55,8 +55,8 @@ pub(self) mod tests {
 
     impl MockBgzfWriter {
         pub fn create() -> Self {
-            let mut index_writer = index::Writer::new(io::Cursor::new(Vec::new()));
-            index_writer.write_magic().unwrap();
+            let mut index_writer = io::Cursor::new(Vec::new());
+            V3::write_magic(&mut index_writer).unwrap();
 
             let mut position_writer = BgzfPositionWriter::from_bgzf(io::Cursor::new(Vec::new()));
             position_writer.write_magic().unwrap();
@@ -76,8 +76,7 @@ pub(self) mod tests {
             position_cursor.seek(io::SeekFrom::Start(0)).unwrap();
             item_cursor.seek(io::SeekFrom::Start(0)).unwrap();
 
-            let mut index_reader = index::Reader::<_, V3>::new(index_cursor);
-            let index = index_reader.read_index().unwrap();
+            let index = Index::read(&mut index_cursor).unwrap();
 
             let mut position_reader = bgzf::Reader::new(position_cursor);
             V3::read_magic(&mut position_reader).unwrap();

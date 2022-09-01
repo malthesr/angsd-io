@@ -4,7 +4,7 @@ use std::{fs, io, marker::PhantomData, mem, path::Path};
 
 use super::{
     ext::{member_paths_from_prefix, prefix_from_member_path},
-    index,
+    index::{self, IndexWriterExt},
     record::{Likelihoods, Record},
     Version, V3,
 };
@@ -25,10 +25,10 @@ pub type BgzfWriter<W1, W2, V> = Writer<W1, bgzf::Writer<W2>, V>;
 
 /// A SAF writer.
 pub struct Writer<W1, W2, V: Version = V3> {
-    index_writer: index::Writer<W1>,
+    index_writer: W1,
     position_writer: PositionWriter<W2>,
     item_writer: ItemWriter<W2>,
-    index_record: Option<index::Record>,
+    index_record: Option<index::Record<V>>,
     v: PhantomData<V>,
 }
 
@@ -39,17 +39,17 @@ where
     V: Version,
 {
     /// Returns the index writer.
-    pub fn index_writer(&self) -> &index::Writer<W1> {
+    pub fn index_writer(&self) -> &W1 {
         &self.index_writer
     }
 
     /// Returns a mutable reference to the index.
-    pub fn index_writer_mut(&mut self) -> &mut index::Writer<W1> {
+    pub fn index_writer_mut(&mut self) -> &mut W1 {
         &mut self.index_writer
     }
 
     /// Returns the inner index, position writer, and item writer, consuming `self`.
-    pub fn into_parts(self) -> (index::Writer<W1>, PositionWriter<W2>, ItemWriter<W2>) {
+    pub fn into_parts(self) -> (W1, PositionWriter<W2>, ItemWriter<W2>) {
         (self.index_writer, self.position_writer, self.item_writer)
     }
 
@@ -65,7 +65,7 @@ where
 
     /// Creates a new writer.
     pub fn new(
-        index_writer: index::Writer<W1>,
+        index_writer: W1,
         position_writer: PositionWriter<W2>,
         item_writer: ItemWriter<W2>,
     ) -> Self {
@@ -96,11 +96,10 @@ where
     }
 }
 
-impl<W1, W2, V> BgzfWriter<W1, W2, V>
+impl<W1, W2> BgzfWriter<W1, W2, V3>
 where
     W1: io::Write,
     W2: io::Write,
-    V: Version,
 {
     /// Writes a single record.
     pub fn write_record<I>(&mut self, record: &Record<I, Likelihoods>) -> io::Result<()>
@@ -127,7 +126,7 @@ where
                     index::Record::new(contig_id.to_string(), 1, position_offset, item_offset),
                 );
 
-                self.index_writer.write_record(&old)?;
+                old.write(&mut self.index_writer)?;
             } else {
                 // Case (1b)
                 *index_record.sites_mut() += 1;
@@ -154,11 +153,11 @@ where
     /// Finishes writing.
     pub fn finish(mut self) -> io::Result<(W1, W2, W2)> {
         if let Some(record) = self.index_record {
-            self.index_writer.write_record(&record)?;
+            record.write(&mut self.index_writer)?;
         }
 
         Ok((
-            self.index_writer.into_inner(),
+            self.index_writer,
             self.position_writer.into_inner().finish()?,
             self.item_writer.into_inner().finish()?,
         ))
@@ -206,7 +205,8 @@ where
     where
         P: AsRef<Path>,
     {
-        let index_writer = index::Writer::from_path(index_path)?;
+        let mut index_writer = fs::File::create(index_path).map(io::BufWriter::new)?;
+        V::write_magic(&mut index_writer)?;
         let position_writer = PositionWriter::from_bgzf_path(position_path)?;
         let item_writer = ItemWriter::from_bgzf_path(item_path)?;
 
