@@ -10,7 +10,7 @@ use super::{
 };
 
 mod traits;
-pub use traits::WriterExt;
+pub(crate) use traits::WriterExt;
 
 const START_OFFSET: u64 = 8;
 

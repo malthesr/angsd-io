@@ -15,7 +15,7 @@ mod intersect;
 pub use intersect::Intersect;
 
 mod traits;
-pub use traits::ReaderExt;
+pub(crate) use traits::ReaderExt;
 
 /// A BGZF SAF reader.
 ///
