@@ -36,10 +36,9 @@ pub type BgzfReaderV4<R> = BgzfReader<R, V4>;
 /// with its provided methods should typically be preferred. Version-specific aliases
 /// [`BgzfReaderV3`] and [`BgzfReaderV4`] are also provided for convenience.
 pub struct Reader<R, V> {
-    index: Index<V>,
+    location: Location<V>,
     position_reader: R,
     item_reader: R,
-    position: ReaderPosition,
 }
 
 impl<R, V> Reader<R, V>
@@ -49,22 +48,22 @@ where
 {
     /// Returns a new record suitable for use in reading.
     pub fn create_record_buf(&self) -> Record<Id, V::Item> {
-        V::create_record_buf(&self.index)
+        V::create_record_buf(self.index())
     }
 
     /// Returns the index.
     pub fn index(&self) -> &Index<V> {
-        &self.index
+        &self.location.index
     }
 
     /// Returns a mutable reference to the index.
     pub fn index_mut(&mut self) -> &mut Index<V> {
-        &mut self.index
+        &mut self.location.index
     }
 
     /// Returns the inner index, position reader, and item reader, consuming `self`.
     pub fn into_parts(self) -> (Index<V>, R, R) {
-        (self.index, self.position_reader, self.item_reader)
+        (self.location.index, self.position_reader, self.item_reader)
     }
 
     /// Returns the inner item reader.
@@ -83,13 +82,12 @@ where
     ///
     /// `None` if `index` contains no records.
     pub fn new(index: Index<V>, position_reader: R, item_reader: R) -> Option<Self> {
-        let position = ReaderPosition::setup(&index)?;
+        let location = Location::setup(index)?;
 
         Some(Self {
-            index,
             position_reader,
             item_reader,
-            position,
+            location,
         })
     }
 
@@ -125,14 +123,14 @@ where
     /// Note that the record buffer needs to be correctly set up. Use [`Self::create_record_buf`]
     /// for a correctly initialised record buffer to use for reading.
     pub fn read_record(&mut self, record: &mut Record<Id, V::Item>) -> io::Result<ReadStatus> {
-        if !self.position.contig_is_finished() || self.position.next_contig(&self.index).is_some() {
+        if !self.location.contig_is_finished() || self.location.next_contig().is_some() {
             // Index still contains data, read and check that readers are not at EoF
             match (self.read_position()?, self.read_item(record.item_mut())?) {
                 (Some(pos), ReadStatus::NotDone) => {
-                    *record.contig_id_mut() = self.position.contig_id();
+                    *record.contig_id_mut() = self.location.contig_id;
                     *record.position_mut() = pos;
 
-                    self.position.next_site_on_contig();
+                    self.location.next_site_on_contig();
 
                     Ok(ReadStatus::NotDone)
                 }
@@ -189,17 +187,19 @@ where
     ///
     /// Panics if `contig_id` is larger than the number of records defined in the index.
     pub fn seek(&mut self, contig_id: usize) -> io::Result<()> {
-        self.position
-            .set_contig(&self.index, contig_id)
+        self.location
+            .set_contig(contig_id)
             .expect("cannot seek to contig ID");
 
-        let record = &self.index.records()[contig_id];
+        let record = &self.index().records()[contig_id];
+        let position_offset = record.position_offset();
+        let item_offset = record.item_offset();
 
-        let position_offset = bgzf::VirtualPosition::from(record.position_offset());
-        self.position_reader.seek(position_offset)?;
+        let position_vpos = bgzf::VirtualPosition::from(position_offset);
+        self.position_reader.seek(position_vpos)?;
 
-        let item_offset = bgzf::VirtualPosition::from(record.item_offset());
-        self.item_reader.seek(item_offset)?;
+        let item_vpos = bgzf::VirtualPosition::from(item_offset);
+        self.item_reader.seek(item_vpos)?;
 
         Ok(())
     }
@@ -215,7 +215,7 @@ where
     /// Panics if sequence name is not defined in index.
     pub fn seek_by_name(&mut self, name: &str) -> io::Result<()> {
         let contig_id = self
-            .index
+            .index()
             .records()
             .iter()
             .position(|x| x.name() == name)
@@ -293,51 +293,60 @@ where
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-struct ReaderPosition {
-    contig_id: usize,
-    sites: usize,
+/// A SAF reader location.
+///
+/// The location tracks the current location of the reader relative to its index file in terms
+/// of which contig is currently being read, and how many sites are left on that contig.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Location<V> {
+    pub index: Index<V>,
+    pub contig_id: usize,
+    pub sites_left_on_contig: usize,
 }
 
-impl ReaderPosition {
-    fn contig_id(&self) -> usize {
-        self.contig_id
+impl<V> Location<V>
+where
+    V: Version,
+{
+    /// Returns `true` if no more sites are left to read on the current contig.
+    pub fn contig_is_finished(&self) -> bool {
+        0 == self.sites_left_on_contig
     }
 
-    fn contig_is_finished(&self) -> bool {
-        0 == self.sites
+    /// Decrements the number of sites left to read on current contig.
+    pub fn next_site_on_contig(&mut self) {
+        self.sites_left_on_contig -= 1
     }
 
-    fn next_site_on_contig(&mut self) {
-        self.sites -= 1
+    /// Moves the location first site on the next contig in index.
+    ///
+    /// Returns `None` is no more contigs exist in the index.
+    pub fn next_contig(&mut self) -> Option<()> {
+        self.set_contig(self.contig_id + 1)
     }
 
-    fn next_contig<V>(&mut self, index: &Index<V>) -> Option<()>
-    where
-        V: Version,
-    {
-        self.set_contig(index, self.contig_id + 1)
-    }
-
-    fn set_contig<V>(&mut self, index: &Index<V>, contig_id: usize) -> Option<()>
-    where
-        V: Version,
-    {
+    /// Moves the location to the first site on the contig with the provided ID in the index.
+    ///
+    /// Returns `None` if contig with the provided ID does not exist in the index.
+    pub fn set_contig(&mut self, contig_id: usize) -> Option<()> {
         self.contig_id = contig_id;
-
-        self.sites = index.records().get(self.contig_id)?.sites();
-
+        self.sites_left_on_contig = self.index.records().get(self.contig_id)?.sites();
         Some(())
     }
 
-    fn setup<V>(index: &Index<V>) -> Option<Self>
-    where
-        V: Version,
-    {
+    /// Creates a new location from an index.
+    ///
+    /// The location will be set to the first site on the first contig. Returns `None` if no contigs
+    /// are defined in the index.
+    pub fn setup(index: Index<V>) -> Option<Self> {
         let contig_id = 0;
-        let sites = index.records().first()?.sites();
+        let sites_left_on_contig = index.records().first()?.sites();
 
-        Some(Self { contig_id, sites })
+        Some(Self {
+            index,
+            contig_id,
+            sites_left_on_contig,
+        })
     }
 }
 
