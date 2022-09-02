@@ -193,36 +193,28 @@ impl Version for V3 {
     {
         let contig_id = record.contig_id().as_ref();
 
-        // Handle index according to three cases:
-        //
-        // (1) New record is not the first, and...
-        //     (1a) it is on a new contig: write the current index record and setup next
-        //     (1b) is on the old contig: increment the count of sites on contig
-        // (2) New record is the first: write alleles to index, and set up first index record
         if let Some(index_record) = writer.index_record.as_mut() {
-            // Case (1)
-            if index_record.name() != contig_id {
-                // Case (1a)
+            if index_record.name() == contig_id {
+                // We're on the same contig, so we can simply update index record
+                *index_record.sites_mut() += 1;
+            } else {
+                // We're on a new contig, which means we have to write the current record index
+                // and set up a new one
                 let position_offset = u64::from(writer.position_writer.virtual_position());
                 let item_offset = u64::from(writer.item_writer.virtual_position());
 
-                let old = mem::replace(
-                    index_record,
-                    index::Record::new(contig_id.to_string(), 1, position_offset, item_offset),
-                );
+                let new =
+                    index::Record::new(contig_id.to_string(), 1, position_offset, item_offset);
 
+                let old = mem::replace(index_record, new);
                 old.write(&mut writer.index_writer)?;
-            } else {
-                // Case (1b)
-                *index_record.sites_mut() += 1;
             }
         } else {
-            // Case (2)
-            writer.index_writer.write_alleles(record.alleles())?;
-
             let offset = Self::MAGIC_NUMBER.len() as u64;
-            writer.index_record =
-                Some(index::Record::new(contig_id.to_string(), 1, offset, offset));
+            let index_record = index::Record::new(contig_id.to_string(), 0, offset, offset);
+            writer.index_record = Some(index_record);
+
+            return Self::write_record(writer, record);
         }
 
         // Write record
@@ -313,7 +305,13 @@ impl Version for V4 {
     where
         W: io::Write,
     {
-        todo!()
+        let start = u32::try_from(item.start()).expect("cannot convert band start to u32");
+        writer.write_all(&start.to_le_bytes())?;
+
+        let len = u32::try_from(item.start()).expect("cannot convert band length to u32");
+        writer.write_all(&len.to_le_bytes())?;
+
+        writer.write_likelihoods(item.likelihoods())
     }
 
     fn write_record<W, I>(
@@ -324,6 +322,43 @@ impl Version for V4 {
         W: io::Write,
         I: AsRef<str>,
     {
-        todo!()
+        let contig_id = record.contig_id().as_ref();
+
+        if let Some(index_record) = writer.index_record.as_mut() {
+            if index_record.name() == contig_id {
+                // We're on the same contig, so we can simply update index record
+                *index_record.sum_band_mut() += record.item().likelihoods().len();
+                *index_record.sites_mut() += 1;
+            } else {
+                // We're on a new contig, which means we have to write the current record index
+                // and set up a new one
+                let position_offset = u64::from(writer.position_writer.virtual_position());
+                let item_offset = u64::from(writer.item_writer.virtual_position());
+
+                let new = index::Record::new_with_sum_band(
+                    contig_id.to_string(),
+                    1,
+                    0,
+                    position_offset,
+                    item_offset,
+                );
+
+                let old = mem::replace(index_record, new);
+                old.write(&mut writer.index_writer)?;
+            }
+        } else {
+            let offset = Self::MAGIC_NUMBER.len() as u64;
+            let index_record =
+                index::Record::new_with_sum_band(contig_id.to_string(), 0, 0, offset, offset);
+            writer.index_record = Some(index_record);
+
+            return Self::write_record(writer, record);
+        }
+
+        // Write record
+        writer.position_writer.write_position(record.position())?;
+        Self::write_item(&mut writer.item_writer, record.item())?;
+
+        Ok(())
     }
 }

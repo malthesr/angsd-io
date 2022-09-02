@@ -51,13 +51,14 @@ pub(self) mod tests {
     pub type MockWriter = Writer<io::Cursor<Vec<u8>>, V3>;
 
     impl MockWriter {
-        pub fn create() -> Self {
+        pub fn create(alleles: usize) -> Self {
             let index_writer = io::Cursor::new(Vec::new());
             let position_writer = io::Cursor::new(Vec::new());
             let item_writer = io::Cursor::new(Vec::new());
 
             let mut new = Self::new(index_writer, position_writer, item_writer);
             new.write_magic().unwrap();
+            new.write_alleles(alleles).unwrap();
             new
         }
     }
@@ -80,7 +81,7 @@ pub(self) mod tests {
 
     macro_rules! reader {
         ($records:expr) => {{
-            let mut writer = MockWriter::create();
+            let mut writer = MockWriter::create($records[0].alleles());
 
             for record in $records.iter() {
                 writer.write_record(record).unwrap();

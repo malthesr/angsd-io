@@ -111,7 +111,16 @@ where
         &mut self.position_writer
     }
 
+    /// Writes the number alleles to the index writer.
+    ///
+    /// The number of alleles should be written immediately after the magic number.
+    pub fn write_alleles(&mut self, alleles: usize) -> io::Result<()> {
+        self.index_writer.write_all(&alleles.to_le_bytes())
+    }
+
     /// Writes the magic numbers.
+    ///
+    /// The magic numbers should be written as the first thing.
     pub fn write_magic(&mut self) -> io::Result<()> {
         V::write_magic(&mut self.index_writer)
             .and_then(|_| V::write_magic(&mut self.position_writer))
@@ -139,8 +148,9 @@ where
     ///
     /// If the paths already exists, they will be overwritten.
     ///
-    /// The magic number will be written to the paths.
-    pub fn from_member_path<P>(member_path: P) -> io::Result<Self>
+    /// The magic number will be written to the paths, and the alleles will be written to the index
+    /// writer after the magic number.
+    pub fn from_member_path<P>(alleles: usize, member_path: P) -> io::Result<Self>
     where
         P: AsRef<Path>,
     {
@@ -156,15 +166,21 @@ where
             )
         })?;
 
-        Self::from_prefix(prefix)
+        Self::from_prefix(alleles, prefix)
     }
 
     /// Creates a new writer from paths.
     ///
     /// If the paths already exists, they will be overwritten.
     ///
-    /// The magic number will be written to the paths.
-    pub fn from_paths<P>(index_path: P, position_path: P, item_path: P) -> io::Result<Self>
+    /// The magic number will be written to the paths, and the alleles will be written to the index
+    /// writer after the magic number.
+    pub fn from_paths<P>(
+        alleles: usize,
+        index_path: P,
+        position_path: P,
+        item_path: P,
+    ) -> io::Result<Self>
     where
         P: AsRef<Path>,
     {
@@ -174,6 +190,7 @@ where
 
         let mut new = Self::new(index_writer, position_writer, item_writer);
         new.write_magic()?;
+        new.write_alleles(alleles)?;
         Ok(new)
     }
 
@@ -185,14 +202,15 @@ where
     ///
     /// If the paths already exists, they will be overwritten.
     ///
-    /// The magic number will be written to the paths.
-    pub fn from_prefix<P>(prefix: P) -> io::Result<Self>
+    /// The magic number will be written to the paths, and the alleles will be written to the index
+    /// writer after the magic number.
+    pub fn from_prefix<P>(alleles: usize, prefix: P) -> io::Result<Self>
     where
         P: AsRef<Path>,
     {
         let [index_path, position_path, item_path] =
             member_paths_from_prefix(&prefix.as_ref().to_string_lossy());
 
-        Self::from_paths(index_path, position_path, item_path)
+        Self::from_paths(alleles, index_path, position_path, item_path)
     }
 }
