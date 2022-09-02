@@ -290,7 +290,7 @@ where
     /// Creates a new reader from a shared prefix.
     ///
     /// Conventionally, the SAF index, positions, and item files are named according to a shared
-    /// prefix and specific extensions for each file. See [`crate::saf::ext`] for these extensions.
+    /// prefix and specific extensions for each file. See [`crate::ext`] for these extensions.
     /// Where this convention is observed, this method opens a reader from the shared prefix.
     ///
     /// The stream will be positioned immediately after the magic number.

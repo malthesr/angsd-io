@@ -3,10 +3,8 @@ use std::{cmp::Ordering, io};
 use indexmap::IndexMap;
 
 use crate::{
-    saf::{
-        record::{Id, Record},
-        version::Version,
-    },
+    record::{Id, Record},
+    version::Version,
     ReadStatus,
 };
 
@@ -335,9 +333,9 @@ impl FromIterator<(String, Vec<usize>)> for SharedContigs {
 mod tests {
     use super::*;
 
-    use crate::saf::tests::*;
+    use crate::tests::*;
 
-    use crate::saf::version::V3;
+    use crate::version::V3;
 
     fn test_intersect<R>(mut intersect: Intersect<R, V3>, shared: &[(&str, u32)]) -> io::Result<()>
     where

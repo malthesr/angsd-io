@@ -5,7 +5,7 @@ use std::{
     io::{self, BufRead},
 };
 
-use angsd_io::glf;
+use angsd_glf as glf;
 
 fn main() -> io::Result<()> {
     let path = env::args().nth(1).expect("missing path to GLF file");

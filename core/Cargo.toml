@@ -1,0 +1,9 @@
+[package]
+name = "angsd-io-core"
+version = "0.1.0"
+authors = ["Malthe Sebro Rasmussen <malthesebro@protonmail.com>"]
+edition = "2021"
+license = "MIT"
+description = "Shared utilities for ANGSD binary format reading/writing"
+homepage = "https://github.com/malthesr/angsd-io/core"
+repository = "https://github.com/malthesr/angsd-io/core"

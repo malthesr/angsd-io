@@ -23,6 +23,8 @@
 //! The above examples are also available as runnable binaries,
 //! see the repository `examples/` folder.
 
+pub use angsd_io_core::ReadStatus;
+
 pub mod ext;
 
 pub mod index;
@@ -96,7 +98,7 @@ pub(self) mod tests {
         ($($contig:literal : $pos:literal => [$($v:literal),+ $(,)?]),+ $(,)?) => {
             vec![
                 $(
-                    crate::saf::Record::new(
+                    crate::Record::new(
                         $contig,
                         $pos,
                         vec![$($v),+],
@@ -107,7 +109,7 @@ pub(self) mod tests {
         ($($contig:literal : $pos:literal),+ $(,)?) => {
             vec![
                 $(
-                    crate::saf::Record::new(
+                    crate::Record::new(
                         $contig,
                         $pos,
                         vec![0.],

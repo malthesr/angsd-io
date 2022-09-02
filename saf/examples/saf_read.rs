@@ -5,7 +5,7 @@ use std::{
     io::{self, Write},
 };
 
-use angsd_io::saf;
+use angsd_saf as saf;
 
 fn main() -> io::Result<()> {
     let path = env::args().nth(1).expect("missing path to SAF member file");

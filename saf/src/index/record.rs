@@ -1,6 +1,6 @@
 use std::{fmt, io, marker::PhantomData};
 
-use crate::saf::version::{Version, V3, V4};
+use crate::version::{Version, V3, V4};
 
 /// A SAF index record.
 ///

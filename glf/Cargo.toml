@@ -1,0 +1,18 @@
+[package]
+name = "angsd-glf"
+version = "0.1.0"
+authors = ["Malthe Sebro Rasmussen <malthesebro@protonmail.com>"]
+edition = "2021"
+license = "MIT"
+description = "Reading and writing of ANGSD GLF file format"
+homepage = "https://github.com/malthesr/angsd-io/glf"
+repository = "https://github.com/malthesr/angsd-io/glf"
+
+[features]
+default = []
+libdeflate = ["bgzf/libdeflater"]
+
+[dependencies]
+angsd-io-core = { path = "../core" }
+bgzf = { package = "noodles-bgzf", version = "0.12" }
+byteorder = "1.4"

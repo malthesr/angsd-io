@@ -26,10 +26,10 @@ pub struct Writer<W, V>
 where
     W: io::Write,
 {
-    pub(super) index_writer: W,
-    pub(super) position_writer: bgzf::Writer<W>,
-    pub(super) item_writer: bgzf::Writer<W>,
-    pub(super) index_record: Option<index::Record<V>>,
+    pub(crate) index_writer: W,
+    pub(crate) position_writer: bgzf::Writer<W>,
+    pub(crate) item_writer: bgzf::Writer<W>,
+    pub(crate) index_record: Option<index::Record<V>>,
 }
 
 impl<W, V> Writer<W, V>
@@ -197,7 +197,7 @@ where
     /// Creates a new writer from a shared prefix.
     ///
     /// Conventionally, the SAF index, positions, and item files are named according to a shared
-    /// prefix and specific extensions for each file. See [`crate::saf::ext`] for these extensions.
+    /// prefix and specific extensions for each file. See [`crate::ext`] for these extensions.
     /// This method opens files for writing in accordance with these conventions.
     ///
     /// If the paths already exists, they will be overwritten.

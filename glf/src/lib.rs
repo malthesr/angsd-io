@@ -17,6 +17,8 @@
 //! The above examples are also available as runnable binaries,
 //! see the repository `examples/` folder.
 
+pub use angsd_io_core::ReadStatus;
+
 pub(self) type Endian = byteorder::LittleEndian;
 
 mod reader;

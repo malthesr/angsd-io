@@ -1,0 +1,19 @@
+[package]
+name = "angsd-saf"
+version = "0.1.0"
+authors = ["Malthe Sebro Rasmussen <malthesebro@protonmail.com>"]
+edition = "2021"
+license = "MIT"
+description = "Reading and writing of ANGSD SAF file format"
+homepage = "https://github.com/malthesr/angsd-io/saf"
+repository = "https://github.com/malthesr/angsd-io/saf"
+
+[features]
+default = []
+libdeflate = ["bgzf/libdeflater"]
+
+[dependencies]
+angsd-io-core = { path = "../core" }
+bgzf = { package = "noodles-bgzf", version = "0.12" }
+byteorder = "1.4"
+indexmap = "1.8"

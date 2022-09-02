@@ -20,7 +20,7 @@ impl ReadStatus {
     /// reader, otherwise returns [`ReadStatus::NotDone`] if any data remains.
     /// The reader may attempt to fill the underlying buffer to check for more
     /// data. An error in this processed is returned.
-    pub(crate) fn check<R>(reader: &mut R) -> io::Result<Self>
+    pub fn check<R>(reader: &mut R) -> io::Result<Self>
     where
         R: io::BufRead,
     {

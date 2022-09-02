@@ -1,4 +1,4 @@
-/// A diploid, diallelic genotype used for indexing a [`Record`](crate::glf::Record).
+/// A diploid, diallelic genotype used for indexing a [`Record`](crate::Record).
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Genotype {
     /// AA genotype.

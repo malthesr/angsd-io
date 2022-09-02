@@ -12,7 +12,7 @@ pub const ITEM_FILE_EXT: &str = "saf.gz";
 const EXTS: [&str; 3] = [INDEX_EXT, POSITIONS_FILE_EXT, ITEM_FILE_EXT];
 
 /// Returns the shared prefix of SAF file member paths given any one of them.
-pub(super) fn prefix_from_member_path(s: &str) -> Option<&str> {
+pub(crate) fn prefix_from_member_path(s: &str) -> Option<&str> {
     EXTS.into_iter()
         .find(|ext| s.ends_with(ext))
         .and_then(|ext| s.strip_suffix(ext))
@@ -20,7 +20,7 @@ pub(super) fn prefix_from_member_path(s: &str) -> Option<&str> {
 }
 
 /// Returns the all three SAF file member paths given their shared prefix.
-pub(super) fn member_paths_from_prefix(prefix: &str) -> [String; 3] {
+pub(crate) fn member_paths_from_prefix(prefix: &str) -> [String; 3] {
     let create_path = |ext| format!("{prefix}.{ext}");
     let index_path = create_path(INDEX_EXT);
     let position_path = create_path(POSITIONS_FILE_EXT);

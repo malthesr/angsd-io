@@ -2,13 +2,13 @@
 
 use std::{fmt, fs, io, path::Path};
 
-use crate::saf::{reader::ReaderExt, version::Version};
+use super::{reader::ReaderExt, version::Version};
 
 mod record;
 pub use record::Record;
 
 mod traits;
-pub(in crate::saf) use traits::{IndexReaderExt, IndexWriterExt};
+pub(crate) use traits::{IndexReaderExt, IndexWriterExt};
 
 /// A SAF file index.
 ///

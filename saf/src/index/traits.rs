@@ -1,6 +1,6 @@
 use std::{io, mem};
 
-use crate::saf::reader::ReaderExt;
+use crate::reader::ReaderExt;
 
 /// An extension trait for reading indexes
 pub trait IndexReaderExt: ReaderExt {
