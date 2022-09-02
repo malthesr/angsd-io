@@ -305,13 +305,7 @@ impl Version for V4 {
     where
         W: io::Write,
     {
-        let start = u32::try_from(item.start()).expect("cannot convert band start to u32");
-        writer.write_all(&start.to_le_bytes())?;
-
-        let len = u32::try_from(item.start()).expect("cannot convert band length to u32");
-        writer.write_all(&len.to_le_bytes())?;
-
-        writer.write_likelihoods(item.likelihoods())
+        writer.write_band(item)
     }
 
     fn write_record<W, I>(
