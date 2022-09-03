@@ -1,15 +1,17 @@
 //! Reading of the SAF format.
 
-use std::{fs, io, num::NonZeroUsize, path::Path};
+use std::io;
 
 use crate::ReadStatus;
 
 use super::{
-    ext::{member_paths_from_prefix, prefix_from_member_path},
     index::Index,
     record::{Id, Record},
     version::{Version, V3, V4},
 };
+
+mod builder;
+pub use builder::Builder;
 
 mod intersect;
 pub use intersect::Intersect;
@@ -43,19 +45,17 @@ where
         V::create_record_buf(self.index())
     }
 
-    /// Creates a new reader from existing BGZF readers.
+    /// Creates a new reader from its raw parts.
     ///
-    /// # Returns
+    /// A [`Builder`] will typically be a more ergonimic way to create a reader.
     ///
-    /// `None` if `index` contains no records.
+    /// Returns [`None`] if index contains no records.
     pub fn from_bgzf(
         index: Index<V>,
         position_reader: bgzf::Reader<R>,
         item_reader: bgzf::Reader<R>,
     ) -> Option<Self> {
-        let location = Location::setup(index)?;
-
-        Some(Self {
+        Location::setup(index).map(|location| Self {
             location,
             position_reader,
             item_reader,
@@ -85,54 +85,6 @@ where
     /// Returns a mutable reference to the inner item reader.
     pub fn item_reader_mut(&mut self) -> &mut bgzf::Reader<R> {
         &mut self.item_reader
-    }
-
-    /// Creates a new reader.
-    ///
-    /// The provided readers will be wrapped in [`bgzf::Reader`]s. To create a reader from existing
-    /// BGZF readers, see [`Self::from_bgzf`].
-    ///
-    /// By default, the reader will be single-threaded. See [`Self::new_multithreaded`] to create a
-    /// multi-threaded reader.
-    ///
-    /// # Returns
-    ///
-    /// `None` if `index` contains no records.
-    pub fn new(index: Index<V>, position_reader: R, item_reader: R) -> Option<Self> {
-        Self::from_bgzf(
-            index,
-            bgzf::Reader::new(position_reader),
-            bgzf::Reader::new(item_reader),
-        )
-    }
-
-    /// Creates a new multi-threaded reader.
-    ///
-    /// The provided readers will be wrapped in [`bgzf::Reader`]s. To create a reader from existing
-    /// BGZF readers, see [`Self::from_bgzf`].
-    ///
-    /// Note that `threads` is provided to each of the inner readers. To customize, note that it is
-    /// possible to set up the multithreaded inner readers directly (see [`bgzf::reader::Builder`])
-    /// and construct the reader via [`Self::from_bgzf`].
-    ///
-    /// # Returns
-    ///
-    /// `None` if `index` contains no records.
-    pub fn new_multithreaded(
-        index: Index<V>,
-        position_reader: R,
-        item_reader: R,
-        threads: NonZeroUsize,
-    ) -> Option<Self> {
-        Self::from_bgzf(
-            index,
-            bgzf::reader::Builder::default()
-                .set_worker_count(threads)
-                .build_from_reader(position_reader),
-            bgzf::reader::Builder::default()
-                .set_worker_count(threads)
-                .build_from_reader(item_reader),
-        )
     }
 
     /// Returns the inner position reader.
@@ -272,74 +224,6 @@ where
             .expect("name not found in index");
 
         self.seek(contig_id)
-    }
-}
-
-impl<V> Reader<io::BufReader<fs::File>, V>
-where
-    V: Version,
-{
-    /// Creates a new reader from any member path.
-    ///
-    /// This method relies on stripping a conventional suffix from the member path and
-    /// reconstructing all member paths. See [`Self::from_prefix`] for details on
-    /// conventional naming.
-    ///
-    /// The stream will be positioned immediately after the magic number.
-    pub fn from_member_path<P>(member_path: P) -> io::Result<Self>
-    where
-        P: AsRef<Path>,
-    {
-        let s = member_path.as_ref().to_string_lossy();
-
-        let prefix = prefix_from_member_path(&s).ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!(
-                    "Cannot determine shared SAF prefix from member path '{:?}'",
-                    member_path.as_ref()
-                ),
-            )
-        })?;
-
-        Self::from_prefix(prefix)
-    }
-
-    /// Creates a new reader from paths.
-    ///
-    /// The stream will be positioned immediately after the magic number.
-    pub fn from_paths<P>(index_path: P, position_path: P, item_path: P) -> io::Result<Self>
-    where
-        P: AsRef<Path>,
-    {
-        let index = Index::read_from_path(index_path)?;
-        let position_reader = fs::File::open(position_path).map(io::BufReader::new)?;
-        let item_reader = fs::File::open(item_path).map(io::BufReader::new)?;
-
-        let mut new = Self::new(index, position_reader, item_reader).ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidData, "SAF index contains no records")
-        })?;
-
-        new.read_magic()?;
-
-        Ok(new)
-    }
-
-    /// Creates a new reader from a shared prefix.
-    ///
-    /// Conventionally, the SAF index, positions, and item files are named according to a shared
-    /// prefix and specific extensions for each file. See [`crate::ext`] for these extensions.
-    /// Where this convention is observed, this method opens a reader from the shared prefix.
-    ///
-    /// The stream will be positioned immediately after the magic number.
-    pub fn from_prefix<P>(prefix: P) -> io::Result<Self>
-    where
-        P: AsRef<Path>,
-    {
-        let [index_path, position_path, item_path] =
-            member_paths_from_prefix(&prefix.as_ref().to_string_lossy());
-
-        Self::from_paths(index_path, position_path, item_path)
     }
 }
 

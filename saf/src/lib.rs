@@ -30,7 +30,7 @@ pub mod ext;
 pub mod index;
 pub use index::Index;
 
-mod reader;
+pub mod reader;
 pub use reader::{Intersect, Reader, ReaderV3, ReaderV4};
 
 pub mod record;
@@ -38,5 +38,5 @@ pub use record::Record;
 
 pub mod version;
 
-mod writer;
+pub mod writer;
 pub use writer::{Writer, WriterV3, WriterV4};

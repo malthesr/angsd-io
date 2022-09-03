@@ -9,7 +9,7 @@ use angsd_saf as saf;
 
 fn main() -> io::Result<()> {
     let path = env::args().nth(1).expect("missing path to SAF member file");
-    let mut reader = saf::ReaderV4::from_member_path(path)?;
+    let mut reader = saf::reader::Builder::v4().build_from_member_path(path)?;
 
     let stdout = io::stdout();
     let mut writer = stdout.lock();

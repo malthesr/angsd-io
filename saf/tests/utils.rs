@@ -1,6 +1,7 @@
 use std::io::{self, Seek};
 
 use angsd_saf::{
+    reader::Builder,
     record::{Band, Record},
     version::{Version, V3, V4},
     Index, Reader, Writer,
@@ -35,7 +36,8 @@ where
 
     let index = Index::read(&mut index_reader)?;
 
-    let mut new = Reader::new(index, position_reader, item_reader)
+    let mut new = Builder::<V>::default()
+        .build(index, position_reader, item_reader)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "empty index"))?;
     new.read_magic()?;
     Ok(new)
