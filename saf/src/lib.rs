@@ -2,22 +2,22 @@
 //!
 //! # Examples
 //!
-//! Read BGZF SAF file:
+//! Read SAF v3 file:
 //!
 //! ```no_run
-#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/saf_read.rs"))]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/saf_v3_read.rs"))]
 //! ```
 //!
-//! Write BGZF SAF file:
+//! Write SAF v3 file:
 //!
 //! ```no_run
-#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/saf_write.rs"))]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/saf_v3_write.rs"))]
 //! ```
 //!
-//! Read only intersecting sites in multiple BGZF SAF files:
+//! Read only intersecting sites in multiple SAF v3 files:
 //!
 //! ```no_run
-#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/saf_intersect.rs"))]
+#![doc = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/examples/saf_v3_intersect.rs"))]
 //! ```
 //!
 //! The above examples are also available as runnable binaries,
