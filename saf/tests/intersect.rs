@@ -1,29 +1,90 @@
-use std::io;
-
-mod utils;
+use std::{fmt, io};
 
 use angsd_saf::{
-    version::{Version, V3},
-    Intersect,
+    version::{Version, V3, V4},
+    Intersect, Record,
 };
 
-fn test_intersect<R, V>(mut intersect: Intersect<R, V>, shared: &[(&str, u32)]) -> io::Result<()>
+pub mod utils;
+use utils::{get_alleles_v3, get_alleles_v4, reader_from_records};
+
+/// Returns record with the same contig id and position as `target` in `records`, if it exists.
+fn find_intersection<'a, V>(
+    target: &Record<&'static str, V::Item>,
+    records: &'a [Record<&'static str, V::Item>],
+) -> Option<&'a Record<&'static str, V::Item>>
 where
-    R: io::BufRead + io::Seek,
     V: Version,
 {
-    let mut bufs = intersect.create_record_bufs();
+    records.iter().find(|record| {
+        record.contig_id() == target.contig_id() && record.position() == target.position()
+    })
+}
 
-    for (expected_contig, expected_pos) in shared.iter() {
-        intersect.read_records(&mut bufs)?;
+/// Returns the intersecting records among the provided records.
+///
+/// Each inner slice here corresponds to one "reader".
+fn brute_force_intersect<V>(
+    all_records: &[&[Record<&'static str, V::Item>]],
+) -> Vec<Vec<Record<&'static str, V::Item>>>
+where
+    V: Version,
+    V::Item: Clone + fmt::Debug,
+{
+    let mut intersection = Vec::new();
 
-        for (i, buf) in bufs.iter().enumerate() {
-            let id = *buf.contig_id();
-            let contig = intersect.get_readers()[i].index().records()[id].name();
-            let pos = buf.position();
+    'outer: for target in all_records[0] {
+        let mut entry = Vec::new();
 
-            assert_eq!((contig, pos), (*expected_contig, *expected_pos));
+        for records in all_records {
+            if let Some(matching_record) = find_intersection::<V>(target, records) {
+                entry.push(matching_record.clone());
+            } else {
+                entry.clear();
+                continue 'outer;
+            }
         }
+
+        // If we get to this point, then each "reader" has a matching record, contained in `entry`,
+        // and this is an intersection
+        intersection.push(entry.clone());
+        entry.clear()
+    }
+
+    intersection
+}
+
+/// Test that writing-then-reading the provided records with an intersecting reader provides the
+/// same set of records as a brute-force intersection.
+///
+/// Each inner slice of records here corresponds to one "reader".
+fn test_intersect<V>(
+    all_alleles: &[usize],
+    all_records: &[&[Record<&'static str, V::Item>]],
+) -> io::Result<()>
+where
+    V: Version,
+    V::Item: Clone + fmt::Debug + PartialEq,
+{
+    let mut intersect = all_alleles
+        .iter()
+        .zip(all_records)
+        .map(|(&alleles, records)| reader_from_records::<V>(alleles, records))
+        .collect::<io::Result<Vec<_>>>()
+        .map(Intersect::new)?;
+
+    let all_expected_records = brute_force_intersect::<V>(all_records);
+
+    let mut bufs = intersect.create_record_bufs();
+    for expected_records in all_expected_records {
+        intersect.read_records(&mut bufs)?;
+        let read_records = bufs
+            .iter()
+            .zip(intersect.get_readers())
+            .map(|(buf, reader)| buf.clone().to_named(reader.index()))
+            .collect::<Vec<_>>();
+
+        assert_eq!(read_records, expected_records);
     }
 
     assert!(intersect.read_records(&mut bufs)?.is_done());
@@ -31,86 +92,120 @@ where
     Ok(())
 }
 
-#[test]
-fn test_intersect_two() -> io::Result<()> {
-    let left_reader = reader!(
-        V3,
-        records![
-            "chr2":4, "chr2":7, "chr5":1, "chr5":2, "chr7":9, "chr8":1,
-        ]
-    )?;
+fn test_intersect_v3(
+    all_records: &[&[Record<&'static str, <V3 as Version>::Item>]],
+) -> io::Result<()> {
+    let all_alleles = all_records
+        .iter()
+        .map(|records| get_alleles_v3(records))
+        .collect::<Vec<_>>();
+    test_intersect::<V3>(&all_alleles, all_records)
+}
 
-    let right_reader = reader!(
-        V3,
-        records![
-            "chr1":1, "chr2":7, "chr4":2, "chr4":3, "chr5":1, "chr7":9, "chr8":2, "chr9":1,
-        ]
-    )?;
-
-    let intersect = left_reader.intersect(right_reader);
-    let shared = vec![("chr2", 7), ("chr5", 1), ("chr7", 9)];
-
-    test_intersect(intersect, &shared)
+fn test_intersect_v4(
+    all_records: &[&[Record<&'static str, <V4 as Version>::Item>]],
+) -> io::Result<()> {
+    let all_alleles = all_records
+        .iter()
+        .map(|records| get_alleles_v4(records))
+        .collect::<Vec<_>>();
+    test_intersect::<V4>(&all_alleles, all_records)
 }
 
 #[test]
-fn test_intersect_two_simple() -> io::Result<()> {
-    let left_reader = reader!(
-        V3,
-        records![
-            "chr1":1, "chr1":2, "chr1":3
-        ]
-    )?;
+fn test_intersect_two_v3() -> io::Result<()> {
+    test_intersect_v3(&[records_v3![c1:1], records_v3![c1:1]])?;
 
-    let right_reader = reader!(
-        V3,
-        records![
-            "chr1":1, "chr1":2, "chr1":3
-        ]
-    )?;
+    test_intersect_v3(&[records_v3![c1:1, c1:2, c1:3], records_v3![c1:1, c1:2, c1:3]])?;
 
-    let intersect = left_reader.intersect(right_reader);
-    let shared = vec![("chr1", 1), ("chr1", 2), ("chr1", 3)];
+    test_intersect_v3(&[
+        records_v3![c1:1, c1:2, c1:3,       c2:2],
+        records_v3![c1:1, c1:2,       c2:1, c2:2],
+    ])?;
 
-    test_intersect(intersect, &shared)
+    test_intersect_v3(&[
+        records_v3![
+                  c2:4, c2:7,             c5:1, c5:2, c7:9, c8:1,
+        ],
+        records_v3![
+            c1:1,       c2:7, c4:2, c4:3, c5:1,       c7:9,       c8:2, c9:1,
+        ],
+    ])?;
+
+    Ok(())
 }
 
 #[test]
-fn test_intersect_finishes_with_shared_end() -> io::Result<()> {
-    let left_reader = reader!(V3, records!("chr1":2 => [0.]))?;
-    let right_reader = reader!(V3, records!("chr1":2 => [0.]))?;
+fn test_intersect_two_v4() -> io::Result<()> {
+    test_intersect_v4(&[records_v4![c1:1], records_v4![c1:2]])?;
 
-    let intersect = left_reader.intersect(right_reader);
-    let shared = vec![("chr1", 2)];
+    test_intersect_v4(&[records_v4![c1:1], records_v4![c2:1]])?;
 
-    test_intersect(intersect, &shared)
+    test_intersect_v4(&[records_v4![c1:1, c2:1, c3:1], records_v4![c1:1, c2:1, c3:1]])?;
+
+    test_intersect_v4(&[
+        records_v4![      c1:2,       c2:2],
+        records_v4![c1:1, c1:2, c2:1, c2:2],
+    ])?;
+
+    test_intersect_v4(&[
+        records_v4![
+                  c2:4, c2:7, c5:2, c7:9, c8:1,
+        ],
+        records_v4![
+            c1:1,       c2:7,       c7:9, c8:1,
+        ],
+    ])?;
+
+    Ok(())
 }
 
 #[test]
-fn test_intersect_three() -> io::Result<()> {
-    let fst_reader = reader!(
-        V3,
-        records![
-            "chr2":4, "chr2":7, "chr5":1, "chr5":2, "chr7":9, "chr8":1,
-        ]
-    )?;
+fn test_intersect_three_v3() -> io::Result<()> {
+    test_intersect_v3(&[records_v3![c1:1], records_v3![c1:1], records_v3![c1:1]])?;
 
-    let snd_reader = reader!(
-        V3,
-        records![
-            "chr2":4, "chr2":7, "chr7":9, "chr8":1, "chr9":1,
-        ]
-    )?;
+    test_intersect_v3(&[
+        records_v3![c1:1, c1:2, c1:3],
+        records_v3![c1:1, c1:2, c1:3],
+        records_v3![c1:1,       c1:3],
+    ])?;
 
-    let thd_reader = reader!(
-        V3,
-        records![
-           "chr2":4, "chr2":8, "chr5":1, "chr5":2, "chr7":9, "chr8":1,
-        ]
-    )?;
+    test_intersect_v3(&[
+        records_v3![
+            c2:4, c2:7,       c5:1, c5:2, c7:9, c8:1,
+        ],
+        records_v3![
+            c2:4, c2:7,                   c7:9, c8:1, c9:1,
+        ],
+        records_v3![
+            c2:4,       c2:8, c5:1, c5:2, c7:9, c8:1,
+        ],
+    ])?;
 
-    let intersect = fst_reader.intersect(snd_reader).intersect(thd_reader);
-    let shared = vec![("chr2", 4u32), ("chr7", 9), ("chr8", 1)];
+    Ok(())
+}
 
-    test_intersect(intersect, &shared)
+#[test]
+fn test_intersect_three_v4() -> io::Result<()> {
+    test_intersect_v4(&[records_v4![c1:1], records_v4![c2:1], records_v4![c1:1]])?;
+
+    test_intersect_v4(&[
+        records_v4![c1:1, c1:2, c1:3],
+        records_v4![c1:1, c1:2, c1:3],
+        records_v4![c1:1, c1:2, c1:3],
+    ])?;
+
+    test_intersect_v4(&[
+        records_v4![
+            c2:4, c2:7,       c5:1, c5:2, c7:9, c8:1,
+        ],
+        records_v4![
+                  c2:7,                   c7:9, c8:1,
+        ],
+        records_v4![
+            c2:4, c2:7, c2:8, c5:1, c5:2, c7:9, c8:1,
+        ],
+    ])?;
+
+    Ok(())
 }
