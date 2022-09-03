@@ -173,6 +173,28 @@ where
     }
 }
 
+impl<I> fmt::Display for Record<I, Band>
+where
+    I: fmt::Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.contig_id)?;
+        write!(f, "{SEP}{}", self.position)?;
+
+        for _ in 0..self.item.start {
+            f.write_str(SEP)?;
+            f.write_str(".")?;
+        }
+
+        for v in self.item.likelihoods.iter() {
+            f.write_str(SEP)?;
+            v.fmt(f)?;
+        }
+
+        Ok(())
+    }
+}
+
 impl FromStr for Record<String, Likelihoods> {
     type Err = ParseRecordError;
 
