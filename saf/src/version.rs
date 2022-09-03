@@ -237,7 +237,7 @@ pub struct V4;
 impl Version for V4 {
     const VERSION: u8 = 4;
 
-    const MAGIC_NUMBER: [u8; MAGIC_LEN] = [b's', b'a', b'f', b'v', b'3', 0, 0, 0];
+    const MAGIC_NUMBER: [u8; MAGIC_LEN] = [b's', b'a', b'f', b'v', b'4', 0, 0, 0];
 
     type Item = Band;
 
