@@ -146,7 +146,10 @@ where
     }
 
     /// Reads a single item from the item reader into the provided buffer.
-    fn read_item(&mut self, buf: &mut V::Item) -> io::Result<ReadStatus> {
+    ///
+    /// Note that this will bring the item and position readers out of sync. Use
+    /// [`Self::read_record`] instead unless you wish to manually re-sync the underlying readers.
+    pub fn read_item(&mut self, buf: &mut V::Item) -> io::Result<ReadStatus> {
         V::read_item(&mut self.item_reader, buf)
     }
 
@@ -157,8 +160,11 @@ where
         V::read_magic(&mut self.position_reader).and_then(|_| V::read_magic(&mut self.item_reader))
     }
 
-    /// Reads a single position from the item reader.
-    fn read_position(&mut self) -> io::Result<Option<u32>> {
+    /// Reads a single position from the position reader.
+    ///
+    /// Note that this will bring the item and position readers out of sync. Use
+    /// [`Self::read_record`] instead unless you wish to manually re-sync the underlying readers.
+    pub fn read_position(&mut self) -> io::Result<Option<u32>> {
         self.position_reader.read_position()
     }
 
