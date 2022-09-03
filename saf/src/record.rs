@@ -1,6 +1,11 @@
 //! A SAF record.
 
-use std::{error::Error, fmt, io, num, str::FromStr};
+use std::{
+    error::Error,
+    fmt, io, num,
+    ops::{Deref, DerefMut},
+    str::FromStr,
+};
 
 use super::{index::Index, version::Version};
 
@@ -12,7 +17,54 @@ const SEP: &str = "\t";
 pub type Id = usize;
 
 /// SAF likelihoods values.
-pub type Likelihoods = Vec<f32>;
+#[derive(Clone, Debug, PartialEq)]
+pub struct Likelihoods(Box<[f32]>);
+
+impl AsRef<[f32]> for Likelihoods {
+    fn as_ref(&self) -> &[f32] {
+        &self.0
+    }
+}
+
+impl AsMut<[f32]> for Likelihoods {
+    fn as_mut(&mut self) -> &mut [f32] {
+        &mut self.0
+    }
+}
+
+impl Deref for Likelihoods {
+    type Target = [f32];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Likelihoods {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl From<Box<[f32]>> for Likelihoods {
+    fn from(likelihoods: Box<[f32]>) -> Self {
+        Self(likelihoods)
+    }
+}
+
+impl From<Likelihoods> for Box<[f32]> {
+    fn from(likelihoods: Likelihoods) -> Self {
+        likelihoods.0
+    }
+}
+
+impl From<Vec<f32>> for Likelihoods {
+    fn from(likelihoods: Vec<f32>) -> Self {
+        likelihoods.into_boxed_slice().into()
+    }
+}
 
 /// A SAF likelihood value band.
 ///
@@ -21,7 +73,7 @@ pub type Likelihoods = Vec<f32>;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Band {
     start: usize,
-    likelihoods: Likelihoods,
+    likelihoods: Vec<f32>,
 }
 
 impl Band {
@@ -39,7 +91,7 @@ impl Band {
     }
 
     /// Creates a new band.
-    pub fn new(start: usize, likelihoods: Likelihoods) -> Self {
+    pub fn new(start: usize, likelihoods: Vec<f32>) -> Self {
         Self { start, likelihoods }
     }
 
@@ -134,7 +186,7 @@ impl<I> Record<I, Likelihoods> {
 
     /// Creates a new record with a fixed number of zero-initialised likelihoods.
     pub fn from_alleles(contig_id: I, position: u32, alleles: usize) -> Self {
-        let item = vec![0.0; alleles + 1];
+        let item = vec![0.0; alleles + 1].into();
 
         Self::new(contig_id, position, item)
     }
@@ -218,7 +270,7 @@ impl FromStr for Record<String, Likelihoods> {
             .map_err(ParseRecordError::InvalidLikelihoods)?;
 
         if !item.is_empty() {
-            Ok(Self::new(contig_id, position, item))
+            Ok(Self::new(contig_id, position, item.into()))
         } else {
             Err(ParseRecordError::MissingLikelihoods)
         }

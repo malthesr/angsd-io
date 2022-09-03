@@ -96,7 +96,7 @@ macro_rules! records_v3 {
         ::angsd_saf::Record::new(
             stringify!($contig),
             $pos,
-            vec![$($v),+],
+            vec![$($v),+].into(),
         )
     };
 }
