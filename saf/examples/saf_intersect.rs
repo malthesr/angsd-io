@@ -10,7 +10,7 @@ use angsd_saf as saf;
 fn main() -> io::Result<()> {
     let readers = env::args()
         .skip(1)
-        .map(|p| saf::ReaderV3::from_member_path(p))
+        .map(saf::ReaderV3::from_member_path)
         .collect::<io::Result<Vec<_>>>()?;
 
     // Note also the [`Reader::intersect`] and [`Intersect::intersect`] methods to construct

@@ -35,21 +35,21 @@ mod tests {
 
     #[test]
     fn test_prefix_from_member_path() {
-        assert_eq!(prefix_from_member_path(&"foo.saf.idx"), Some("foo"));
-        assert_eq!(prefix_from_member_path(&"foo.bar.saf.idx"), Some("foo.bar"));
+        assert_eq!(prefix_from_member_path("foo.saf.idx"), Some("foo"));
+        assert_eq!(prefix_from_member_path("foo.bar.saf.idx"), Some("foo.bar"));
         assert_eq!(
-            prefix_from_member_path(&"dir/bar.saf.pos.gz"),
+            prefix_from_member_path("dir/bar.saf.pos.gz"),
             Some("dir/bar")
         );
         assert_eq!(
-            prefix_from_member_path(&"/home/dir/baz.saf.gz"),
+            prefix_from_member_path("/home/dir/baz.saf.gz"),
             Some("/home/dir/baz"),
         );
     }
 
     #[test]
     fn test_prefix_from_non_member_path_invalid() {
-        assert_eq!(prefix_from_member_path(&"foo.saf.gz.idx"), None);
+        assert_eq!(prefix_from_member_path("foo.saf.gz.idx"), None);
     }
 
     #[test]
