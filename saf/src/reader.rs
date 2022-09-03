@@ -1,6 +1,6 @@
 //! Reading of the SAF format.
 
-use std::{fs, io, path::Path};
+use std::{fs, io, num::NonZeroUsize, path::Path};
 
 use crate::ReadStatus;
 
@@ -92,6 +92,9 @@ where
     /// The provided readers will be wrapped in [`bgzf::Reader`]s. To create a reader from existing
     /// BGZF readers, see [`Self::from_bgzf`].
     ///
+    /// By default, the reader will be single-threaded. See [`Self::new_multithreaded`] to create a
+    /// multi-threaded reader.
+    ///
     /// # Returns
     ///
     /// `None` if `index` contains no records.
@@ -100,6 +103,35 @@ where
             index,
             bgzf::Reader::new(position_reader),
             bgzf::Reader::new(item_reader),
+        )
+    }
+
+    /// Creates a new multi-threaded reader.
+    ///
+    /// The provided readers will be wrapped in [`bgzf::Reader`]s. To create a reader from existing
+    /// BGZF readers, see [`Self::from_bgzf`].
+    ///
+    /// Note that `threads` is provided to each of the inner readers. To customize, note that it is
+    /// possible to set up the multithreaded inner readers directly (see [`bgzf::reader::Builder`])
+    /// and construct the reader via [`Self::from_bgzf`].
+    ///
+    /// # Returns
+    ///
+    /// `None` if `index` contains no records.
+    pub fn new_multithreaded(
+        index: Index<V>,
+        position_reader: R,
+        item_reader: R,
+        threads: NonZeroUsize,
+    ) -> Option<Self> {
+        Self::from_bgzf(
+            index,
+            bgzf::reader::Builder::default()
+                .set_worker_count(threads)
+                .build_from_reader(position_reader),
+            bgzf::reader::Builder::default()
+                .set_worker_count(threads)
+                .build_from_reader(item_reader),
         )
     }
 
