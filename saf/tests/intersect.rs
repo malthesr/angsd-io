@@ -61,6 +61,7 @@ where
 fn test_intersect<V>(
     all_alleles: &[usize],
     all_records: &[&[Record<&'static str, V::Item>]],
+    threads: usize,
 ) -> io::Result<()>
 where
     V: Version,
@@ -69,7 +70,7 @@ where
     let mut intersect = all_alleles
         .iter()
         .zip(all_records)
-        .map(|(&alleles, records)| reader_from_records::<V>(alleles, records))
+        .map(|(&alleles, records)| reader_from_records::<V>(alleles, records, threads))
         .collect::<io::Result<Vec<_>>>()
         .map(Intersect::new)?;
 
@@ -99,7 +100,9 @@ fn test_intersect_v3(
         .iter()
         .map(|records| get_alleles_v3(records))
         .collect::<Vec<_>>();
-    test_intersect::<V3>(&all_alleles, all_records)
+    test_intersect::<V3>(&all_alleles, all_records, 1)?;
+    test_intersect::<V3>(&all_alleles, all_records, 4)?;
+    Ok(())
 }
 
 fn test_intersect_v4(
@@ -109,7 +112,9 @@ fn test_intersect_v4(
         .iter()
         .map(|records| get_alleles_v4(records))
         .collect::<Vec<_>>();
-    test_intersect::<V4>(&all_alleles, all_records)
+    test_intersect::<V4>(&all_alleles, all_records, 1)?;
+    test_intersect::<V4>(&all_alleles, all_records, 2)?;
+    Ok(())
 }
 
 #[test]

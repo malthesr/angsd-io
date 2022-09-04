@@ -62,12 +62,16 @@ where
 }
 
 /// Tests that index and records in reader matches provided records after writing-and-reading.
-fn test_write_read<V>(alleles: usize, records: &[Record<&str, V::Item>]) -> io::Result<()>
+fn test_write_read<V>(
+    alleles: usize,
+    records: &[Record<&str, V::Item>],
+    threads: usize,
+) -> io::Result<()>
 where
     V: Version,
     V::Item: Clone + fmt::Debug + PartialEq,
 {
-    let mut reader = reader_from_records::<V>(alleles, records)?;
+    let mut reader = reader_from_records::<V>(alleles, records, threads)?;
 
     assert_eq!(reader.index().alleles(), alleles);
     test_index_matches_records(reader.index(), records);
@@ -75,11 +79,15 @@ where
 }
 
 fn test_write_read_v3(records: &[Record<&str, <V3 as Version>::Item>]) -> io::Result<()> {
-    test_write_read::<V3>(get_alleles_v3(records), records)
+    test_write_read::<V3>(get_alleles_v3(records), records, 1)?;
+    test_write_read::<V3>(get_alleles_v3(records), records, 2)?;
+    Ok(())
 }
 
 fn test_write_read_v4(records: &[Record<&str, <V4 as Version>::Item>]) -> io::Result<()> {
-    test_write_read::<V4>(get_alleles_v4(records), records)
+    test_write_read::<V4>(get_alleles_v4(records), records, 1)?;
+    test_write_read::<V4>(get_alleles_v4(records), records, 3)?;
+    Ok(())
 }
 
 #[test]

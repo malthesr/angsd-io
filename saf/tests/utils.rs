@@ -1,4 +1,7 @@
-use std::io::{self, Seek};
+use std::{
+    io::{self, Seek},
+    num::NonZeroUsize,
+};
 
 use angsd_saf::{
     reader::Builder,
@@ -24,7 +27,7 @@ where
     Ok(new)
 }
 
-pub fn reader_from_writer<V>(writer: MockWriter<V>) -> io::Result<MockReader<V>>
+pub fn reader_from_writer<V>(writer: MockWriter<V>, threads: usize) -> io::Result<MockReader<V>>
 where
     V: Version,
 {
@@ -37,6 +40,7 @@ where
     let index = Index::read(&mut index_reader)?;
 
     let mut new = Builder::<V>::default()
+        .set_threads(NonZeroUsize::try_from(threads).unwrap())
         .build(index, position_reader, item_reader)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "empty index"))?;
     new.read_magic()?;
@@ -46,6 +50,7 @@ where
 pub fn reader_from_records<V>(
     alleles: usize,
     records: &[Record<&str, V::Item>],
+    threads: usize,
 ) -> io::Result<MockReader<V>>
 where
     V: Version,
@@ -56,7 +61,7 @@ where
         writer.write_record(record)?;
     }
 
-    reader_from_writer(writer)
+    reader_from_writer(writer, threads)
 }
 
 /// Returns number of alleles for setup for V3 records.
