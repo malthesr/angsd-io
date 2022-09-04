@@ -2,7 +2,7 @@
 
 use std::{
     error::Error,
-    fmt, io, num,
+    fmt, io, iter, num,
     ops::{Deref, DerefMut},
     str::FromStr,
 };
@@ -77,6 +77,22 @@ pub struct Band {
 }
 
 impl Band {
+    /// Converts the band into a full set of likelihoods.
+    ///
+    /// The `alleles` argument here corresponds to the alleles argument defined in the [`Index`],
+    /// and decides how much (if any) to extend the likelihoods past the current end.
+    ///
+    /// Likelihoods that are not explicitly represented in the band will be set to `fill`.
+    /// This would typically be `0.0` when not in log-space.
+    pub fn into_full(self, alleles: usize, fill: f32) -> Likelihoods {
+        let mut v = self.likelihoods;
+
+        v.splice(0..0, iter::repeat(fill).take(self.start));
+        v.extend(iter::repeat(fill).take(alleles + 1 - v.len()));
+
+        v.into()
+    }
+
     /// Returns the band likelihoods, consuming `self`.
     pub fn into_likelihoods(self) -> Vec<f32> {
         self.likelihoods
@@ -88,6 +104,16 @@ impl Band {
     #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.likelihoods.len()
+    }
+
+    /// Returns a reference to the band likelihoods.
+    pub fn likelihoods(&self) -> &[f32] {
+        &self.likelihoods
+    }
+
+    /// Returns a mutable reference to the band likelihoods.
+    pub fn likelihoods_mut(&mut self) -> &mut Vec<f32> {
+        &mut self.likelihoods
     }
 
     /// Creates a new band.
@@ -105,16 +131,6 @@ impl Band {
     /// Returns a mutable reference to the start of the band.
     pub fn start_mut(&mut self) -> &mut usize {
         &mut self.start
-    }
-
-    /// Returns a reference to the band likelihoods.
-    pub fn likelihoods(&self) -> &[f32] {
-        &self.likelihoods
-    }
-
-    /// Returns a mutable reference to the band likelihoods.
-    pub fn likelihoods_mut(&mut self) -> &mut Vec<f32> {
-        &mut self.likelihoods
     }
 }
 
@@ -189,6 +205,19 @@ impl<I> Record<I, Likelihoods> {
         let item = vec![0.0; alleles + 1].into();
 
         Self::new(contig_id, position, item)
+    }
+}
+
+impl<I> Record<I, Band> {
+    /// Converts the record into a record with the full set of likelihoods.
+    ///
+    /// See also [`Band::into_full`] for more documentation.
+    pub fn into_full(self, alleles: usize, fill: f32) -> Record<I, Likelihoods> {
+        Record::new(
+            self.contig_id,
+            self.position,
+            self.item.into_full(alleles, fill),
+        )
     }
 }
 
@@ -313,5 +342,42 @@ impl Error for ParseRecordError {}
 impl From<ParseRecordError> for io::Error {
     fn from(error: ParseRecordError) -> Self {
         io::Error::new(io::ErrorKind::InvalidData, error)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_into_full_basic() {
+        assert_eq!(
+            Record::new("1", 1, Band::new(2, vec![1.; 2])).into_full(6, 0.),
+            Record::new("1", 1, Likelihoods::from(vec![0., 0., 1., 1., 0., 0., 0.]))
+        );
+    }
+
+    #[test]
+    fn test_into_full_no_start() {
+        assert_eq!(
+            Record::new("1", 10, Band::new(0, vec![2.; 3])).into_full(4, -1.),
+            Record::new("1", 10, Likelihoods::from(vec![2., 2., 2., -1., -1.]))
+        );
+    }
+
+    #[test]
+    fn test_into_full_no_tail() {
+        assert_eq!(
+            Record::new("10", 1, Band::new(2, vec![2.; 3])).into_full(4, -1.),
+            Record::new("10", 1, Likelihoods::from(vec![-1., -1., 2., 2., 2.]))
+        );
+    }
+
+    #[test]
+    fn test_into_full_no_fill() {
+        assert_eq!(
+            Record::new("2", 2, Band::new(0, vec![0., 1., 2.])).into_full(2, 0.),
+            Record::new("2", 2, Likelihoods::from(vec![0., 1., 2.]))
+        );
     }
 }
