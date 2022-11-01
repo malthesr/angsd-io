@@ -14,8 +14,6 @@ libdeflate = ["bgzf/libdeflater"]
 
 [dependencies]
 angsd-io-core = { path = "../core" }
-# TODO: Update to 0.15 once released; 0.14 has bug in read+seek multithreaded,
-# see github.com/zaeleus/noodles/issues/112
-bgzf = { package = "noodles-bgzf", git = "https://github.com/zaeleus/noodles.git", rev = "531273d" }
+bgzf = { package = "noodles-bgzf", version = "0.17" }
 byteorder = "1.4"
 indexmap = "1.8"
